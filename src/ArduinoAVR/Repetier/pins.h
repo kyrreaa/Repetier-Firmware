@@ -320,8 +320,11 @@ STEPPER_CURRENT_CONTROL
 #define X_MIN_PIN          3
 #define X_MAX_PIN          2
 
-#define Y_STEP_PIN         60
-#define Y_DIR_PIN          61
+// #define Y_STEP_PIN         60
+// #define Y_DIR_PIN          61
+// Moved Y_STEP and Y_DIR to D16 and D17 to avoid the jtag interface for debugging
+#define Y_STEP_PIN         16
+#define Y_DIR_PIN          17
 #define Y_ENABLE_PIN       56
 #define Y_MIN_PIN          14
 #define Y_MAX_PIN          15
