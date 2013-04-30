@@ -87,7 +87,7 @@ is a full cartesian system where x, y and z moves are handled by seperate motors
 Cases 1 and 2 cover all needed xy H gantry systems. If you get results mirrored etc. you can swap motor connections for x and y. If a motor turns in 
 the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
 */
-#define DRIVE_SYSTEM 0
+#define DRIVE_SYSTEM 3
 
 // ##########################################################################################
 // ##                               Calibration                                            ##
@@ -105,9 +105,9 @@ the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
 
     #if DELTA_DRIVE_TYPE == 0
       /** \brief Pitch in mm of drive belt. GT2 = 2mm */
-      #define BELT_PITCH 2
+      #define BELT_PITCH 2.0
       /** \brief Number of teeth on X, Y and Z tower pulleys */
-      #define PULLEY_TEETH 20
+      #define PULLEY_TEETH 19.0
       #define PULLEY_CIRCUMFERENCE (BELT_PITCH * PULLEY_TEETH)
     #elif DELTA_DRIVE_TYPE == 1
       /** \brief Filament pulley diameter in milimeters */
@@ -116,7 +116,7 @@ the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
     #endif
 
     /** \brief Steps per rotation of stepper motor */
-    #define STEPS_PER_ROTATION 400
+    #define STEPS_PER_ROTATION 200
 
     /** \brief Micro stepping rate of X, Y and Y tower stepper drivers */
     #define MICRO_STEPS 8
@@ -158,7 +158,7 @@ the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
 #define EXT0_X_OFFSET 0
 #define EXT0_Y_OFFSET 0
 // for skeinforge 40 and later, steps to pull the plasic 1 mm inside the extruder, not out.  Overridden if EEPROM activated.
-#define EXT0_STEPS_PER_MM 413 //385
+#define EXT0_STEPS_PER_MM 246 // Herringbone and hobbed bolt
 // What type of sensor is used?
 // 1 is 100k thermistor (Epcos B57560G0107F000 - RepRap-Fab.org and many other)
 // 2 is 200k thermistor
@@ -177,7 +177,7 @@ the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
 // 99 Generic thermistor table 3
 // 100 is AD595
 // 101 is MAX6675
-#define EXT0_TEMPSENSOR_TYPE 1
+#define EXT0_TEMPSENSOR_TYPE 0
 // Analog input pin for reading temperatures or pin enabling SS for MAX6675
 #define EXT0_TEMPSENSOR_PIN TEMP_0_PIN
 // WHich pin enables the heater
@@ -185,7 +185,7 @@ the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
 #define EXT0_STEP_PIN E0_STEP_PIN
 #define EXT0_DIR_PIN E0_DIR_PIN
 // set to false/true for normal / inverse direction
-#define EXT0_INVERSE true
+#define EXT0_INVERSE false
 #define EXT0_ENABLE_PIN E0_ENABLE_PIN
 // For Inverting Stepper Enable Pins (Active Low) use 0, Non Inverting (Active High) use 1
 #define EXT0_ENABLE_ON false
@@ -193,13 +193,13 @@ the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
 // length of filament pulled inside the heater. For repsnap or older
 // skeinforge use hiher values.
 //  Overridden if EEPROM activated.
-#define EXT0_MAX_FEEDRATE 30
+#define EXT0_MAX_FEEDRATE 100
 // Feedrate from halted extruder in mm/s
 //  Overridden if EEPROM activated.
 #define EXT0_MAX_START_FEEDRATE 10
 // Acceleration in mm/s^2
 //  Overridden if EEPROM activated.
-#define EXT0_MAX_ACCELERATION 4000
+#define EXT0_MAX_ACCELERATION 1000
 /** Type of heat manager for this extruder. 
 - 0 = Simply switch on/off if temperature is reached. Works always.
 - 1 = PID Temperature control. Is better but needs good PID values. Defaults are a good start for most extruder.
@@ -513,7 +513,7 @@ Value is used for all generic tables created. */
 
 // Select type of your heated bed. It's the same as for EXT0_TEMPSENSOR_TYPE
 // set to 0 if you don't have a heated bed
-#define HEATED_BED_SENSOR_TYPE 1
+#define HEATED_BED_SENSOR_TYPE 4
 /** Analog pin of analog sensor to read temperature of heated bed.  */
 #define HEATED_BED_SENSOR_PIN TEMP_1_PIN
 /** \brief Pin to enable heater for bed. */
@@ -540,13 +540,13 @@ To prevent a long deviation from the target zone, this value limits the lower va
 A good start is 30 lower then the optimal value. You need to leave room for cooling.
  Overridden if EEPROM activated.
 */
-#define HEATED_BED_PID_INTEGRAL_DRIVE_MIN 80
+#define HEATED_BED_PID_INTEGRAL_DRIVE_MIN 255
 /** P-gain.  Overridden if EEPROM activated. */
-#define HEATED_BED_PID_PGAIN   196
+#define HEATED_BED_PID_PGAIN   377.9
 /** I-gain  Overridden if EEPROM activated.*/
-#define HEATED_BED_PID_IGAIN   33.02
+#define HEATED_BED_PID_IGAIN   59.12
 /** Dgain.  Overridden if EEPROM activated.*/
-#define HEATED_BED_PID_DGAIN 290
+#define HEATED_BED_PID_DGAIN 603.83
 // maximum time the heater is can be switched on. Max = 255.  Overridden if EEPROM activated.
 #define HEATED_BED_PID_MAX 255
 
@@ -588,7 +588,7 @@ on this endstop.
 #define ENDSTOP_PULLUP_Z_MIN false
 #define ENDSTOP_PULLUP_X_MAX true
 #define ENDSTOP_PULLUP_Y_MAX true
-#define ENDSTOP_PULLUP_Z_MAX false
+#define ENDSTOP_PULLUP_Z_MAX true
 
 //set to true to invert the logic of the endstops
 #define ENDSTOP_X_MIN_INVERTING true
@@ -596,15 +596,15 @@ on this endstop.
 #define ENDSTOP_Z_MIN_INVERTING true
 #define ENDSTOP_X_MAX_INVERTING false
 #define ENDSTOP_Y_MAX_INVERTING false
-#define ENDSTOP_Z_MAX_INVERTING true
+#define ENDSTOP_Z_MAX_INVERTING false
 
 // Set the values true where you have a hardware endstop. The Pin numbe ris taken from pins.h.
 
-#define MIN_HARDWARE_ENDSTOP_X true
-#define MIN_HARDWARE_ENDSTOP_Y true
-#define MIN_HARDWARE_ENDSTOP_Z true
-#define MAX_HARDWARE_ENDSTOP_X false
-#define MAX_HARDWARE_ENDSTOP_Y false
+#define MIN_HARDWARE_ENDSTOP_X false
+#define MIN_HARDWARE_ENDSTOP_Y false
+#define MIN_HARDWARE_ENDSTOP_Z false
+#define MAX_HARDWARE_ENDSTOP_X true
+#define MAX_HARDWARE_ENDSTOP_Y true
 #define MAX_HARDWARE_ENDSTOP_Z true
 
 //If your axes are only moving in one direction, make sure the endstops are connected properly.
@@ -626,15 +626,15 @@ on this endstop.
 #define DISABLE_E false
 
 // Inverting axis direction
-#define INVERT_X_DIR true
-#define INVERT_Y_DIR true
-#define INVERT_Z_DIR true
+#define INVERT_X_DIR false
+#define INVERT_Y_DIR false
+#define INVERT_Z_DIR false
 
 //// ENDSTOP SETTINGS:
 // Sets direction of endstops when homing; 1=MAX, -1=MIN
-#define X_HOME_DIR -1
-#define Y_HOME_DIR -1
-#define Z_HOME_DIR -1
+#define X_HOME_DIR 1
+#define Y_HOME_DIR 1
+#define Z_HOME_DIR 1
 
 // Delta robot radius endstop
 #define max_software_endstop_r true
@@ -650,8 +650,8 @@ on this endstop.
 #define max_software_endstop_z true
 
 // If during homing the endstop is reached, ho many mm should the printer move back for the second try
-#define ENDSTOP_X_BACK_MOVE 5
-#define ENDSTOP_Y_BACK_MOVE 5
+#define ENDSTOP_X_BACK_MOVE 2
+#define ENDSTOP_Y_BACK_MOVE 2
 #define ENDSTOP_Z_BACK_MOVE 2
 
 // For higher precision you can reduce the speed for the second test on the endstop
@@ -663,26 +663,26 @@ on this endstop.
 // When you have several endstops in one circuit you need to disable it after homing by moving a
 // small amount back. This is also the case with H-belt systems.
 #define ENDSTOP_X_BACK_ON_HOME 1
-#define ENDSTOP_Y_BACK_ON_HOME 14
-#define ENDSTOP_Z_BACK_ON_HOME 0
+#define ENDSTOP_Y_BACK_ON_HOME 1
+#define ENDSTOP_Z_BACK_ON_HOME 1
 
 // You can disable endstop checking for print moves. This is needed, if you get sometimes
 // false signals from your endstops. If your endstops don't give false signals, you
 // can set it on for safety.
-#define ALWAYS_CHECK_ENDSTOPS false
+#define ALWAYS_CHECK_ENDSTOPS true
 
 // maximum positions in mm - only fixed numbers!
 // For delta robot Z_MAX_LENGTH is maximum travel of the towers and should be set to the distance between the hotend
 // and the platform when the printer is at its home position.
 // If EEPROM is enabled these values will be overidden with the values in the EEPROM
-#define X_MAX_LENGTH 165
-#define Y_MAX_LENGTH 175
-#define Z_MAX_LENGTH 80
+#define X_MAX_LENGTH 100
+#define Y_MAX_LENGTH 100
+#define Z_MAX_LENGTH 218.6
 
 // Coordinates for the minimum axis. Can also be negative if you want to have the bed start at 0 and the printer can go to the left side
 // of the bed. Maximum coordinate is given by adding the above X_MAX_LENGTH values.
-#define X_MIN_POS 0
-#define Y_MIN_POS 0
+#define X_MIN_POS -100
+#define Y_MIN_POS -100
 #define Z_MIN_POS 0
 
 // ##########################################################################################
@@ -717,7 +717,7 @@ on this endstop.
 
 /** \brief Printer radius in mm, measured from the center of the print area to the vertical smooth rod.
 */
-#define PRINTER_RADIUS 175
+#define PRINTER_RADIUS 175.4
 
 /**  \brief Horizontal distance bridged by the diagonal push rod when the end effector is in the center. It is pretty close to 50% of the push rod length (250 mm).
 */
@@ -738,7 +738,7 @@ on this endstop.
     This helps cooling the Stepper motors between two print jobs. 
     Overridden if EEPROM activated.
 */
-#define STEPPER_INACTIVE_TIME 120L
+#define STEPPER_INACTIVE_TIME 0
 /** After x seconds of inactivity, the system will go down as far it can.
     It will at least disable all stepper motors and heaters. If the board has
     a power pin, it will be disabled, too. 
@@ -750,14 +750,14 @@ on this endstop.
     The axis order in all axis related arrays is X, Y, Z
      Overridden if EEPROM activated.
     */
-#define MAX_FEEDRATE_X 200
-#define MAX_FEEDRATE_Y 200
-#define MAX_FEEDRATE_Z 5
+#define MAX_FEEDRATE_X 350
+#define MAX_FEEDRATE_Y 350
+#define MAX_FEEDRATE_Z 100
 
 /** Speed in mm/min for finding the home position.  Overridden if EEPROM activated. */
-#define HOMING_FEEDRATE_X 80
-#define HOMING_FEEDRATE_Y 80
-#define HOMING_FEEDRATE_Z 3
+#define HOMING_FEEDRATE_X 100
+#define HOMING_FEEDRATE_Y 100
+#define HOMING_FEEDRATE_Z 100
 
 /* If you have a backlash in both z-directions, you can use this. For most printer, the bed will be pushed down by it's
 own weight, so this is nearly never needed. */
@@ -836,8 +836,8 @@ Corner can be printed with full speed of 50 mm/s
 
 Overridden if EEPROM activated.
 */
-#define MAX_JERK 20.0
-#define MAX_ZJERK 0.3
+#define MAX_JERK 100.0
+#define MAX_ZJERK 10.0
 
 /** \brief Number of moves we can cache in advance.
 
@@ -921,7 +921,7 @@ retraction with infill, where the angle to the perimeter needs a short stop. Uni
 /** \brief Retraction distance in mm. If you want to enable OPS only sometimes, compile with
 OPS support and set retraction distance to 0. If you set it to e.g. 3 in your eeprom settings it is enabled.
  Overridden if EEPROM activated.*/
-#define OPS_RETRACT_DISTANCE 1.5
+#define OPS_RETRACT_DISTANCE 5.0
 
 /** \brief Backslash produced by extruder reversal
 
