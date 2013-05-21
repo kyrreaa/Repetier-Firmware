@@ -104,8 +104,8 @@ the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
     #define DELTA_DRIVE_TYPE 0
 
     #if DELTA_DRIVE_TYPE == 0
-      /** \brief Pitch in mm of drive belt. GT2 = 2mm */
-      #define BELT_PITCH 2.0
+      /** \brief Pitch in mm of drive belt. GT2 = 2mm, MXL = 2.032mm */
+      #define BELT_PITCH 2.032
       /** \brief Number of teeth on X, Y and Z tower pulleys */
       #define PULLEY_TEETH 19.0
       #define PULLEY_CIRCUMFERENCE (BELT_PITCH * PULLEY_TEETH)
