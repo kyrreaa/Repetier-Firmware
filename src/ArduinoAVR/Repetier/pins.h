@@ -1522,6 +1522,91 @@ STEPPER_CURRENT_CONTROL
 #endif
 
 
+
+
+#if MOTHERBOARD == 501
+#define KNOWN_BOARD
+/*****************************************************************
+* ArxPrint Pin Assignments
+******************************************************************/
+
+#ifndef __AVR_ATmega2560__
+#error Oops!  Make sure you have 'Arduino Mega 2560' selected from the 'Tools -> Boards' menu.
+#endif
+
+#define X_STEP_PIN     37
+#define X_DIR_PIN      40
+#define X_MIN_PIN      -1
+#define X_MAX_PIN      69
+#define X_ENABLE_PIN   36
+//#define X_MS1_PIN      -1
+//#define X_MS2_PIN      -1
+
+#define Y_STEP_PIN     34
+#define Y_DIR_PIN      35
+#define Y_MIN_PIN      -1
+#define Y_MAX_PIN      67
+#define Y_ENABLE_PIN   33
+//#define Y_MS1_PIN      69
+//#define Y_MS2_PIN      39
+
+#define Z_STEP_PIN     31
+#define Z_DIR_PIN      32
+#define Z_MIN_PIN      -1
+#define Z_MAX_PIN      65
+#define Z_ENABLE_PIN   30
+//#define Z_MS1_PIN      68
+//#define Z_MS2_PIN      67
+
+#define HEATER_BED_PIN 8
+#define TEMP_BED_PIN   1 
+
+#define HEATER_0_PIN   44
+#define TEMP_0_PIN     9
+
+#define HEATER_1_PIN   -1
+#define TEMP_1_PIN     -1
+
+#define HEATER_2_PIN   -1
+#define TEMP_2_PIN     -1
+
+#define E0_STEP_PIN    29
+#define E0_DIR_PIN     39
+#define E0_ENABLE_PIN  28
+//#define E0_MS1_PIN     65
+//#define E0_MS2_PIN     66
+
+#define E1_STEP_PIN    26
+#define E1_DIR_PIN     27
+#define E1_ENABLE_PIN  25
+//#define E1_MS1_PIN     63
+//#define E1_MS2_PIN     64
+
+//#define DIGIPOTSS_PIN  38
+//#define DIGIPOT_CHANNELS {4,5,3,0,1} // X Y Z E0 E1 digipot channels to stepper driver mapping
+
+#define SDPOWER        -1
+#define SDSS           53
+#define LED_PIN        13
+#define FAN_PIN        8
+#define PS_ON_PIN      4
+#define KILL_PIN       -1
+#define SUICIDE_PIN    -1  //PIN that has to be turned on right after start, to keep power flowing.
+
+#define E0_PINS E0_STEP_PIN,E0_DIR_PIN,E0_ENABLE_PIN,
+#define E1_PINS
+
+#define SCK_PIN          52
+#define MISO_PIN         50
+#define MOSI_PIN         51
+//#define MAX6675_SS       53
+
+#endif
+
+
+
+
+
 /***************************************************************************************
 *PiBot for Repetier pins assignment
 *illustration :
