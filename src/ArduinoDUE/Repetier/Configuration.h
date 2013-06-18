@@ -49,10 +49,29 @@ To override EEPROM settings with config settings, set EEPROM_MODE 0
 #define NUM_EXTRUDER 1
 
 //// The following define selects which electronics board you have. Please choose the one that matches your setup
+// Gen3 PLUS for RepRap Motherboard V1.2 = 21
+// MEGA/RAMPS up to 1.2       = 3
+// RAMPS 1.3/RAMPS 1.4        = 33
+// Azteeg X3                  = 34
+// Gen6                       = 5 
+// Gen6 deluxe                = 51
+// Sanguinololu up to 1.1     = 6
+// Sanguinololu 1.2 and above = 62
+// Melzi board                = 63  // Define REPRAPPRO_HUXLEY if you have one for correct HEATER_1_PIN assignment!
+// Gen7 1.1 till 1.3.x        = 7
+// Gen7 1.4.1 and later       = 71
+// Teensylu (at90usb)         = 8 // requires Teensyduino
+// Printrboard (at90usb)      = 9 // requires Teensyduino
+// Foltyn 3D Master           = 12
+// MegaTronics 1.0            = 70
+// ;egatronics 2.0            = 701
+// RUMBA                      = 80  // Get it from reprapdiscount
+// Rambo                      = 301
 // Arduino Due                = 401 // This is only experimental
 // Arduino Due with RADDS     = 402
+// Arxboard Mega2560          = 501 // Work in progress
 
-#define MOTHERBOARD 33
+#define MOTHERBOARD 501
 
 #include "pins.h"
 
@@ -93,10 +112,10 @@ If a motor turns in the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
     #define DELTA_DRIVE_TYPE 0
 
     #if DELTA_DRIVE_TYPE == 0
-      /** \brief Pitch in mm of drive belt. GT2 = 2mm */
-      #define BELT_PITCH 2.0
+      /** \brief Pitch in mm of drive belt. GT2 = 2mm  XT = 5.08mm */
+      #define BELT_PITCH 5.08
       /** \brief Number of teeth on X, Y and Z tower pulleys */
-      #define PULLEY_TEETH 19.0
+      #define PULLEY_TEETH 9.0
       #define PULLEY_CIRCUMFERENCE (BELT_PITCH * PULLEY_TEETH)
     #elif DELTA_DRIVE_TYPE == 1
       /** \brief Filament pulley diameter in milimeters */
@@ -105,7 +124,7 @@ If a motor turns in the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
     #endif
 
     /** \brief Steps per rotation of stepper motor */
-    #define STEPS_PER_ROTATION 200
+    #define STEPS_PER_ROTATION 400
 
     /** \brief Micro stepping rate of X, Y and Y tower stepper drivers */
     #define MICRO_STEPS 8
