@@ -1534,51 +1534,51 @@ STEPPER_CURRENT_CONTROL
 #error Oops!  Make sure you have 'Arduino Mega 2560' selected from the 'Tools -> Boards' menu.
 #endif
 
-#define X_STEP_PIN     37
-#define X_DIR_PIN      40
+#define X_STEP_PIN     67
+#define X_DIR_PIN      33
 #define X_MIN_PIN      -1
-#define X_MAX_PIN      69
-#define X_ENABLE_PIN   36
+#define X_MAX_PIN      86
+#define X_ENABLE_PIN   26
 //#define X_MS1_PIN      -1
 //#define X_MS2_PIN      -1
 
-#define Y_STEP_PIN     34
-#define Y_DIR_PIN      35
+#define Y_STEP_PIN     66
+#define Y_DIR_PIN      56
 #define Y_MIN_PIN      -1
-#define Y_MAX_PIN      67
-#define Y_ENABLE_PIN   33
+#define Y_MAX_PIN      84
+#define Y_ENABLE_PIN   25
 //#define Y_MS1_PIN      69
 //#define Y_MS2_PIN      39
 
-#define Z_STEP_PIN     31
-#define Z_DIR_PIN      32
+#define Z_STEP_PIN     65
+#define Z_DIR_PIN      55
 #define Z_MIN_PIN      -1
-#define Z_MAX_PIN      65
-#define Z_ENABLE_PIN   30
+#define Z_MAX_PIN      82
+#define Z_ENABLE_PIN   76
 //#define Z_MS1_PIN      68
 //#define Z_MS2_PIN      67
 
-#define HEATER_BED_PIN 8
-#define TEMP_BED_PIN   1 
+#define HEATER_BED_PIN 38
+#define TEMP_BED_PIN   0 
 
-#define HEATER_0_PIN   44
-#define TEMP_0_PIN     9
+#define HEATER_0_PIN   39
+#define TEMP_0_PIN     1
 
-#define HEATER_1_PIN   -1
-#define TEMP_1_PIN     -1
+#define HEATER_1_PIN   40
+#define TEMP_1_PIN     2
 
 #define HEATER_2_PIN   -1
 #define TEMP_2_PIN     -1
 
-#define E0_STEP_PIN    29
-#define E0_DIR_PIN     39
-#define E0_ENABLE_PIN  28
+#define E0_STEP_PIN    64
+#define E0_DIR_PIN     54
+#define E0_ENABLE_PIN  77
 //#define E0_MS1_PIN     65
 //#define E0_MS2_PIN     66
 
-#define E1_STEP_PIN    26
-#define E1_DIR_PIN     27
-#define E1_ENABLE_PIN  25
+#define E1_STEP_PIN    63
+#define E1_DIR_PIN     53
+#define E1_ENABLE_PIN  78
 //#define E1_MS1_PIN     63
 //#define E1_MS2_PIN     64
 
@@ -1586,19 +1586,19 @@ STEPPER_CURRENT_CONTROL
 //#define DIGIPOT_CHANNELS {4,5,3,0,1} // X Y Z E0 E1 digipot channels to stepper driver mapping
 
 #define SDPOWER        -1
-#define SDSS           53
-#define LED_PIN        13
-#define FAN_PIN        8
-#define PS_ON_PIN      4
+#define SDSS           19
+#define LED_PIN        26
+#define FAN_PIN        15  // PH3 aka Servo 0
+#define PS_ON_PIN      16  // PH4 aka Servo 1
 #define KILL_PIN       -1
 #define SUICIDE_PIN    -1  //PIN that has to be turned on right after start, to keep power flowing.
 
 #define E0_PINS E0_STEP_PIN,E0_DIR_PIN,E0_ENABLE_PIN,
-#define E1_PINS
+#define E1_PINS E1_STEP_PIN,E1_DIR_PIN,E1_ENABLE_PIN,
 
-#define SCK_PIN          52
-#define MISO_PIN         50
-#define MOSI_PIN         51
+#define SCK_PIN          20
+#define MISO_PIN         22
+#define MOSI_PIN         21
 //#define MAX6675_SS       53
 
 #endif
