@@ -182,7 +182,7 @@ If a motor turns in the wrong direction change INVERT_X_DIR or INVERT_Y_DIR.
 // 100 is AD595
 // 101 is MAX6675
 // 102 is MAX31855
-#define EXT0_TEMPSENSOR_TYPE 1
+#define EXT0_TEMPSENSOR_TYPE 60
 // Analog input pin for reading temperatures or pin enabling SS for MAX6675
 #define EXT0_TEMPSENSOR_PIN TEMP_0_PIN
 // Which pin enables the heater
@@ -296,7 +296,7 @@ The codes are only executed for multiple extruder when changing the extruder. */
 // 99 Generic thermistor table 3
 // 100 is AD595
 // 101 is MAX6675
-#define EXT1_TEMPSENSOR_TYPE 1
+#define EXT1_TEMPSENSOR_TYPE 60
 // Analog input pin for reading temperatures or pin enabling SS for MAX6675
 #define EXT1_TEMPSENSOR_PIN TEMP_2_PIN
 // Which pin enables the heater
@@ -530,11 +530,11 @@ Value is used for all generic tables created. */
 
 // Select type of your heated bed. It's the same as for EXT0_TEMPSENSOR_TYPE
 // set to 0 if you don't have a heated bed
-#define HEATED_BED_SENSOR_TYPE 1
+#define HEATED_BED_SENSOR_TYPE 60
 /** Analog pin of analog sensor to read temperature of heated bed.  */
-#define HEATED_BED_SENSOR_PIN TEMP_1_PIN
+#define HEATED_BED_SENSOR_PIN TEMP_BED_PIN
 /** \brief Pin to enable heater for bed. */
-#define HEATED_BED_HEATER_PIN HEATER_1_PIN
+#define HEATED_BED_HEATER_PIN HEATER_BED_PIN
 // How often the temperature of the heated bed is set (msec)
 #define HEATED_BED_SET_INTERVAL 5000
 
