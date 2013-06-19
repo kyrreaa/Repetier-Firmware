@@ -1365,7 +1365,7 @@ pins
 #define DIO69_DDR		DDRK
 #define DIO69_PWM		NULL
 
-#if (MOTHERBOARD == 12) || (MOTHERBOARD == 501)
+#if (MOTHERBOARD == 12) || (MOTHERBOARD == 502)
 #define DIO80_PIN		PINJ2
 #define DIO80_RPORT		PINJ
 #define DIO80_WPORT		PORTJ
@@ -1505,14 +1505,14 @@ pins
 
 #endif // MOTHERBOARD == 12
 
-#if MOTHERBOARD == 501
+#if MOTHERBOARD == 502
 #define DIO87_PIN		PINJ3
 #define DIO87_RPORT		PINJ
 #define DIO87_WPORT		PORTJ
 #define DIO87_DDR		DDRJ
 #define DIO87_PWM		NULL
 
-#endif // MOTHERBOARD == 501
+#endif // MOTHERBOARD == 502
 
 
 
