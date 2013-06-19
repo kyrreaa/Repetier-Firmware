@@ -412,10 +412,10 @@ pins
 #define	TXD1				DIO11
 
 // SPI
-#define	SCK					7
+#define	SCK					DIO7
 #define	MISO				DIO6
 #define	MOSI				DIO5
-#define	SS					4
+#define	SS					DIO4
 
 // TWI (I2C)
 #define	SCL					DIO16
@@ -910,10 +910,10 @@ pins
 #define	TXD					DIO1
 
 // SPI
-#define	SCK					52
+#define	SCK					DIO52
 #define	MISO				DIO50
 #define	MOSI				DIO51
-#define	SS					53
+#define	SS					DIO53
 
 // TWI (I2C)
 #define	SCL					DIO21
@@ -1365,7 +1365,7 @@ pins
 #define DIO69_DDR		DDRK
 #define DIO69_PWM		NULL
 
-#if MOTHERBOARD == 12
+#if (MOTHERBOARD == 12) || (MOTHERBOARD == 501)
 #define DIO80_PIN		PINJ2
 #define DIO80_RPORT		PINJ
 #define DIO80_WPORT		PORTJ
@@ -1437,10 +1437,9 @@ pins
 #define DIO94_WPORT		PORTD
 #define DIO94_DDR		DDRD
 #define DIO94_PWM		NULL
-#else // MOTHERBOARD == 12
+
 
 //added below DIO definitions for RAMBo support for LCD's etc...
-
 #define DIO70_PIN       PING4
 #define DIO70_RPORT     PING
 #define DIO70_WPORT     PORTG
@@ -1504,7 +1503,18 @@ pins
 #define DIO81_DDR    DDRD
 #define DIO81_PWM    NULL
 
-#endif
+#endif // MOTHERBOARD == 12
+
+#if MOTHERBOARD == 501
+#define DIO87_PIN		PINJ3
+#define DIO87_RPORT		PINJ
+#define DIO87_WPORT		PORTJ
+#define DIO87_DDR		DDRJ
+#define DIO87_PWM		NULL
+
+#endif // MOTHERBOARD == 501
+
+
 
 #undef PA0
 #define PA0_PIN			PINA0
@@ -2049,10 +2059,10 @@ pins
 
 #if defined (__AVR_AT90USB1287__)  || defined (__AVR_AT90USB1286__)
 // SPI
-#define	SCK					9
+#define	SCK					DIO9
 #define	MISO				DIO11
 #define	MOSI				DIO10
-#define	SS					8
+#define	SS					DIO8
 
 #if MOTHERBOARD!=8 && MOTHERBOARD!=9
 // change for your board
