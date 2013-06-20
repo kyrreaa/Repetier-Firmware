@@ -1536,7 +1536,7 @@ STEPPER_CURRENT_CONTROL
 
 #define X_STEP_PIN     81  // PJ4
 #define X_DIR_PIN      33  // PC4
-#define X_MIN_PIN      -1
+#define X_MIN_PIN      -1  // PK2 (64)
 #define X_MAX_PIN      65  // PK3
 #define X_ENABLE_PIN   26  // PA4
 //#define X_MS1_PIN      -1
@@ -1544,7 +1544,7 @@ STEPPER_CURRENT_CONTROL
 
 #define Y_STEP_PIN     87  // PJ3
 #define Y_DIR_PIN      34  // PC3
-#define Y_MIN_PIN      -1
+#define Y_MIN_PIN      -1  // PK4 (66)
 #define Y_MAX_PIN      67  // PK5
 #define Y_ENABLE_PIN   25  // PA3
 //#define Y_MS1_PIN      69
@@ -1552,7 +1552,7 @@ STEPPER_CURRENT_CONTROL
 
 #define Z_STEP_PIN     80  // PJ2
 #define Z_DIR_PIN      35  // PC2
-#define Z_MIN_PIN      -1
+#define Z_MIN_PIN      -1  // PK6 (68)
 #define Z_MAX_PIN      69  // PK7
 #define Z_ENABLE_PIN   24  // PA2
 //#define Z_MS1_PIN      68
