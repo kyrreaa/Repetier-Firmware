@@ -72,8 +72,9 @@ To override EEPROM settings with config settings, set EEPROM_MODE 0
 // PiBot for Repetier V1.0-1.3= 314
 // PiBot for Repetier V1.4    = 315
 // Sanguish Beta              = 501
+// ArxPrint Beta              = 502
 
-#define MOTHERBOARD 33
+#define MOTHERBOARD 502
 
 #include "pins.h"
 
@@ -1152,7 +1153,7 @@ The following settings override uiconfig.h!
 12 = FELIXPrinters Controller
 
 */
-#define FEATURE_CONTROLLER 2
+#define FEATURE_CONTROLLER 0
 
 /**
 Select the language to use.

@@ -1524,7 +1524,7 @@ STEPPER_CURRENT_CONTROL
 
 
 
-#if MOTHERBOARD == 501
+#if MOTHERBOARD == 502
 #define KNOWN_BOARD
 /*****************************************************************
 * ArxPrint Pin Assignments
