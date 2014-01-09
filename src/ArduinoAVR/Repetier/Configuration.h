@@ -642,7 +642,7 @@ on this endstop.
 #define Z_HOME_DIR 1
 
 // Delta robot radius endstop
-#define max_software_endstop_r true
+#define max_software_endstop_r false
 
 //If true, axis won't move to coordinates less than zero.
 #define min_software_endstop_x false
@@ -655,15 +655,15 @@ on this endstop.
 #define max_software_endstop_z true
 
 // If during homing the endstop is reached, ho many mm should the printer move back for the second try
-#define ENDSTOP_X_BACK_MOVE 2
-#define ENDSTOP_Y_BACK_MOVE 2
-#define ENDSTOP_Z_BACK_MOVE 2
+#define ENDSTOP_X_BACK_MOVE 5
+#define ENDSTOP_Y_BACK_MOVE 5
+#define ENDSTOP_Z_BACK_MOVE 5
 
 // For higher precision you can reduce the speed for the second test on the endstop
 // during homing operation. The homing speed is divided by the value. 1 = same speed, 2 = half speed
-#define ENDSTOP_X_RETEST_REDUCTION_FACTOR 2
-#define ENDSTOP_Y_RETEST_REDUCTION_FACTOR 2
-#define ENDSTOP_Z_RETEST_REDUCTION_FACTOR 2
+#define ENDSTOP_X_RETEST_REDUCTION_FACTOR 4
+#define ENDSTOP_Y_RETEST_REDUCTION_FACTOR 4
+#define ENDSTOP_Z_RETEST_REDUCTION_FACTOR 4
 
 // When you have several endstops in one circuit you need to disable it after homing by moving a
 // small amount back. This is also the case with H-belt systems.
@@ -680,15 +680,15 @@ on this endstop.
 // For delta robot Z_MAX_LENGTH is the maximum travel of the towers and should be set to the distance between the hotend
 // and the platform when the printer is at its home position.
 // If EEPROM is enabled these values will be overidden with the values in the EEPROM
-#define X_MAX_LENGTH 140
-#define Y_MAX_LENGTH 140
-#define Z_MAX_LENGTH 500.0
+#define X_MAX_LENGTH 140.0
+#define Y_MAX_LENGTH 140.0
+#define Z_MAX_LENGTH 390.0
 
 // Coordinates for the minimum axis. Can also be negative if you want to have the bed start at 0 and the printer can go to the left side
 // of the bed. Maximum coordinate is given by adding the above X_MAX_LENGTH values.
-#define X_MIN_POS -140
-#define Y_MIN_POS -140
-#define Z_MIN_POS 0
+#define X_MIN_POS -140.0
+#define Y_MIN_POS -140.0
+#define Z_MIN_POS 0.0
 
 // ##########################################################################################
 // ##                           Movement settings                                          ##
@@ -713,7 +713,7 @@ on this endstop.
 #if DRIVE_SYSTEM==3
 /** \brief Delta rod length
 */
-#define DELTA_DIAGONAL_ROD 300 // mm
+#define DELTA_DIAGONAL_ROD 300.0 // mm
 
 
 /*  =========== Parameter essential for delta calibration ===================
@@ -750,7 +750,8 @@ on this endstop.
 
 /** \brief Horizontal offset of the universal joints on the vertical carriages.
 */
-#define CARRIAGE_HORIZONTAL_OFFSET 18
+//#define CARRIAGE_HORIZONTAL_OFFSET 23.0
+#define CARRIAGE_HORIZONTAL_OFFSET 16.0
 
 /** \brief Printer radius in mm, measured from the center of the print area to the vertical smooth rod.
 */
@@ -775,7 +776,7 @@ you can also change the values online and autoleveling will store the results he
 
 /** \brief Experimental calibration utility for delta printers
 */
-#define SOFTWARE_LEVELING
+//#define SOFTWARE_LEVELING
 
 #endif
 #if DRIVE_SYSTEM == 4 // ========== Tuga special settings =============
@@ -819,7 +820,7 @@ Mega. Used only for nonlinear systems like delta or tuga. */
 #define HOMING_ORDER HOME_ORDER_ZXY
 /* If you have a backlash in both z-directions, you can use this. For most printer, the bed will be pushed down by it's
 own weight, so this is nearly never needed. */
-#define ENABLE_BACKLASH_COMPENSATION true
+#define ENABLE_BACKLASH_COMPENSATION false
 #define Z_BACKLASH 0
 #define X_BACKLASH 0
 #define Y_BACKLASH 0
@@ -862,14 +863,14 @@ If the interval at full speed is below this value, smoothing is disabled for tha
 /** \brief X, Y, Z max acceleration in mm/s^2 for printing moves or retracts. Make sure your printer can go that high!
  Overridden if EEPROM activated.
 */
-#define MAX_ACCELERATION_UNITS_PER_SQ_SECOND_X 1500
-#define MAX_ACCELERATION_UNITS_PER_SQ_SECOND_Y 1500
-#define MAX_ACCELERATION_UNITS_PER_SQ_SECOND_Z 300
+#define MAX_ACCELERATION_UNITS_PER_SQ_SECOND_X 1000
+#define MAX_ACCELERATION_UNITS_PER_SQ_SECOND_Y 1000
+#define MAX_ACCELERATION_UNITS_PER_SQ_SECOND_Z 400
 
 /** \brief X, Y, Z max acceleration in mm/s^2 for travel moves.  Overridden if EEPROM activated.*/
-#define MAX_TRAVEL_ACCELERATION_UNITS_PER_SQ_SECOND_X 3000
-#define MAX_TRAVEL_ACCELERATION_UNITS_PER_SQ_SECOND_Y 3000
-#define MAX_TRAVEL_ACCELERATION_UNITS_PER_SQ_SECOND_Z 600
+#define MAX_TRAVEL_ACCELERATION_UNITS_PER_SQ_SECOND_X 2000
+#define MAX_TRAVEL_ACCELERATION_UNITS_PER_SQ_SECOND_Y 2000
+#define MAX_TRAVEL_ACCELERATION_UNITS_PER_SQ_SECOND_Z 800
 
 /** \brief Maximum allowable jerk.
 
@@ -894,7 +895,7 @@ Corner can be printed with full speed of 50 mm/s
 
 Overridden if EEPROM activated.
 */
-#define MAX_JERK 100.0
+#define MAX_JERK 50.0
 #define MAX_ZJERK 10.0
 
 /** \brief Number of moves we can cache in advance.
@@ -1213,7 +1214,7 @@ same setting.
 /** \brief Lowest repeat time. */
 #define UI_KEY_MIN_REPEAT 50
 
-#define FEATURE_BEEPER true
+#define FEATURE_BEEPER false
 /**
 Beeper sound definitions for short beeps during key actions
 and longer beeps for important actions.
