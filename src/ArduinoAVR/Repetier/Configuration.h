@@ -46,7 +46,7 @@ To override EEPROM settings with config settings, set EEPROM_MODE 0
 // BASIC SETTINGS: select your board type, thermistor type, axis scaling, and endstop configuration
 
 /** Number of extruders. Maximum 6 extruders. */
-#define NUM_EXTRUDER 2
+#define NUM_EXTRUDER 1
 
 //// The following define selects which electronics board you have. Please choose the one that matches your setup
 // Gen3 PLUS for RepRap Motherboard V1.2 = 21
@@ -201,13 +201,13 @@ Overridden if EEPROM activated.*/
 // length of filament pulled inside the heater. For repsnap or older
 // skeinforge use higher values.
 //  Overridden if EEPROM activated.
-#define EXT0_MAX_FEEDRATE 100
+#define EXT0_MAX_FEEDRATE 60
 // Feedrate from halted extruder in mm/s
 //  Overridden if EEPROM activated.
 #define EXT0_MAX_START_FEEDRATE 10
 // Acceleration in mm/s^2
 //  Overridden if EEPROM activated.
-#define EXT0_MAX_ACCELERATION 1000
+#define EXT0_MAX_ACCELERATION 500
 /** Type of heat manager for this extruder. 
 - 0 = Simply switch on/off if temperature is reached. Works always.
 - 1 = PID Temperature control. Is better but needs good PID values. Defaults are a good start for most extruder.
@@ -680,14 +680,14 @@ on this endstop.
 // For delta robot Z_MAX_LENGTH is the maximum travel of the towers and should be set to the distance between the hotend
 // and the platform when the printer is at its home position.
 // If EEPROM is enabled these values will be overidden with the values in the EEPROM
-#define X_MAX_LENGTH 140.0
-#define Y_MAX_LENGTH 140.0
-#define Z_MAX_LENGTH 390.0
+#define X_MAX_LENGTH 142.0
+#define Y_MAX_LENGTH 142.0
+#define Z_MAX_LENGTH 374.6
 
 // Coordinates for the minimum axis. Can also be negative if you want to have the bed start at 0 and the printer can go to the left side
 // of the bed. Maximum coordinate is given by adding the above X_MAX_LENGTH values.
-#define X_MIN_POS -140.0
-#define Y_MIN_POS -140.0
+#define X_MIN_POS -142.0
+#define Y_MIN_POS -142.0
 #define Z_MIN_POS 0.0
 
 // ##########################################################################################
@@ -740,22 +740,23 @@ on this endstop.
 #define DELTA_ALPHA_C 90
 
 /** Correct radius by this value for each column. Perfect builds have 0 everywhere. */
-#define DELTA_RADIUS_CORRECTION_A 0
-#define DELTA_RADIUS_CORRECTION_B 0
-#define DELTA_RADIUS_CORRECTION_C 0
+#define DELTA_RADIUS_CORRECTION_A 0.0
+#define DELTA_RADIUS_CORRECTION_B 0.0
+#define DELTA_RADIUS_CORRECTION_C 0.0
+
 
 /** \brief Horizontal offset of the universal joints on the end effector (moving platform).
 */
-#define END_EFFECTOR_HORIZONTAL_OFFSET 33
+#define END_EFFECTOR_HORIZONTAL_OFFSET 32.5
 
 /** \brief Horizontal offset of the universal joints on the vertical carriages.
 */
-//#define CARRIAGE_HORIZONTAL_OFFSET 23.0
-#define CARRIAGE_HORIZONTAL_OFFSET 16.0
+#define CARRIAGE_HORIZONTAL_OFFSET 22.67
+//#define CARRIAGE_HORIZONTAL_OFFSET 16.1
 
 /** \brief Printer radius in mm, measured from the center of the print area to the vertical smooth rod.
 */
-#define PRINTER_RADIUS 200.0
+#define PRINTER_RADIUS 205.0 // Target
 
 /**  \brief Horizontal distance bridged by the diagonal push rod when the end effector is in the center. It is pretty close to 50% of the push rod length (250 mm).
 */
@@ -841,7 +842,7 @@ This is like reducing your 1/16th microstepping to 1/8 or 1/4. It is much cheape
 additional stepper interrupts with all it's overhead. As a result you can go as high as
 40000Hz.
 */
-#define STEP_DOUBLER_FREQUENCY 12000
+#define STEP_DOUBLER_FREQUENCY 10000
 /** If you need frequencies off more then 30000 you definitely need to enable this. If you have only 1/8 stepping
 enabling this may cause to stall your moves when 20000Hz is reached.
 */
@@ -1074,17 +1075,17 @@ is always running and is not hung up for some unknown reason. */
 
 /* Z-Probing */
 
-#define FEATURE_Z_PROBE false
-#define Z_PROBE_PIN 63
+#define FEATURE_Z_PROBE true
+#define Z_PROBE_PIN PROBE_PIN
 #define Z_PROBE_PULLUP true
 #define Z_PROBE_ON_HIGH true
 #define Z_PROBE_X_OFFSET 0
 #define Z_PROBE_Y_OFFSET 0
 // Waits for a signal to start. Valid signals are probe hit and ok button.
 // This is needful if you have the probe trigger by hand.
-#define Z_PROBE_WAIT_BEFORE_TEST true
+#define Z_PROBE_WAIT_BEFORE_TEST false
 /** Speed of z-axis in mm/s when probing */
-#define Z_PROBE_SPEED 2
+#define Z_PROBE_SPEED 60
 #define Z_PROBE_XY_SPEED 150
 /** The height is the difference between activated probe position and nozzle height. */
 #define Z_PROBE_HEIGHT 39.91
@@ -1096,13 +1097,13 @@ is always running and is not hung up for some unknown reason. */
    This feature requires a working z-probe and you should have z-endstop at the top not at the bottom.
    The same 3 points are used for the G29 command.
 */
-#define FEATURE_AUTOLEVEL false
-#define Z_PROBE_X1 100
-#define Z_PROBE_Y1 20
-#define Z_PROBE_X2 160
-#define Z_PROBE_Y2 170
-#define Z_PROBE_X3 20
-#define Z_PROBE_Y3 170
+#define FEATURE_AUTOLEVEL true
+#define Z_PROBE_X1 -112.58
+#define Z_PROBE_Y1 -65
+#define Z_PROBE_X2 112.58
+#define Z_PROBE_Y2 -65
+#define Z_PROBE_X3 0
+#define Z_PROBE_Y3 130
 
 /* Define a pin to tuen light on/off */
 #define CASE_LIGHTS_PIN -1

@@ -1601,6 +1601,9 @@ STEPPER_CURRENT_CONTROL
 #define MOSI_PIN         51  // PB2
 //#define MAX6675_SS       53
 
+#define PROBE_PIN  8  // PH5
+#define SERVO1_PIN  9  // PH6
+
 #endif
 
 
