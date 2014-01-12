@@ -707,7 +707,7 @@ on this endstop.
 /** \brief Number of segments to generate for delta conversions per second of move
 */
 #define DELTA_SEGMENTS_PER_SECOND_PRINT 180 // Move accurate setting for print moves
-#define DELTA_SEGMENTS_PER_SECOND_MOVE 70 // Less accurate setting for other moves
+#define DELTA_SEGMENTS_PER_SECOND_MOVE 120 // Less accurate setting for other moves
 
 // Delta settings
 #if DRIVE_SYSTEM==3
