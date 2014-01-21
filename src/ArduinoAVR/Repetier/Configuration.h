@@ -661,9 +661,9 @@ on this endstop.
 
 // For higher precision you can reduce the speed for the second test on the endstop
 // during homing operation. The homing speed is divided by the value. 1 = same speed, 2 = half speed
-#define ENDSTOP_X_RETEST_REDUCTION_FACTOR 4
-#define ENDSTOP_Y_RETEST_REDUCTION_FACTOR 4
-#define ENDSTOP_Z_RETEST_REDUCTION_FACTOR 4
+#define ENDSTOP_X_RETEST_REDUCTION_FACTOR 16
+#define ENDSTOP_Y_RETEST_REDUCTION_FACTOR 16
+#define ENDSTOP_Z_RETEST_REDUCTION_FACTOR 16
 
 // When you have several endstops in one circuit you need to disable it after homing by moving a
 // small amount back. This is also the case with H-belt systems.
@@ -1088,7 +1088,7 @@ is always running and is not hung up for some unknown reason. */
 #define Z_PROBE_SPEED 60
 #define Z_PROBE_XY_SPEED 150
 #define Z_PROBE_SWITCHING_DISTANCE 1.5 // Distance to safely switch off probe
-#define Z_PROBE_REPETITIONS 5 // Repetitions for probing at one point. 
+#define Z_PROBE_REPETITIONS 3 // Repetitions for probing at one point. 
 /** The height is the difference between activated probe position and nozzle height. */
 #define Z_PROBE_HEIGHT 39.91
 /** These scripts are run before resp. after the z-probe is done. Add here code to activate/deactivate probe if needed. */
