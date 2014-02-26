@@ -53,6 +53,7 @@ To override EEPROM settings with config settings, set EEPROM_MODE 0
 // MEGA/RAMPS up to 1.2       = 3
 // RAMPS 1.3/RAMPS 1.4        = 33
 // Azteeg X3                  = 34
+// Ultimaker Shield 1.5.7     = 37
 // Gen6                       = 5
 // Gen6 deluxe                = 51
 // Sanguinololu up to 1.1     = 6
@@ -73,6 +74,7 @@ To override EEPROM settings with config settings, set EEPROM_MODE 0
 // PiBot for Repetier V1.4    = 315
 // Sanguish Beta              = 501
 // ArxPrint Beta              = 502
+// Unique One rev. A          = 88
 // User layout defined in userpins.h = 999
 
 #define MOTHERBOARD 502
@@ -405,6 +407,9 @@ Set value to 1: Scale PID by EXT0_PID_MAX/256 and then clip to EXT0_PID_MAX.
 If your EXT0_PID_MAX is low, you should prefer the second method.
 */
 #define SCALE_PID_TO_MAX 0
+
+
+#define HEATER_PWM_SPEED 1 // How fast ist pwm signal 0 = 15.25Hz, 1 = 30.51Hz, 2 = 61.03Hz, 3 = 122.06Hz
 
 /** Temperature range for target temperature to hold in M109 command. 5 means +/-5 degC
 
@@ -745,6 +750,14 @@ on this endstop.
 #define DELTA_RADIUS_CORRECTION_B 0.0
 #define DELTA_RADIUS_CORRECTION_C 0.0
 
+/** Correction of the default diagonal size. Value gets added.*/
+#define DELTA_DIAGONAL_CORRECTION_A 0
+#define DELTA_DIAGONAL_CORRECTION_B 0
+#define DELTA_DIAGONAL_CORRECTION_C 0
+
+/** Max. radius the printer should be able to reach. */
+#define DELTA_MAX_RADIUS 200
+
 
 /** \brief Horizontal offset of the universal joints on the end effector (moving platform).
 */
@@ -1076,12 +1089,14 @@ is always running and is not hung up for some unknown reason. */
 
 /* Z-Probing */
 
-#define FEATURE_Z_PROBE true
+#define FEATURE_Z_PROBE false
 #define Z_PROBE_PIN PROBE_PIN
 #define Z_PROBE_PULLUP true
 #define Z_PROBE_ON_HIGH true
 #define Z_PROBE_X_OFFSET 0
 #define Z_PROBE_Y_OFFSET 0
+#define Z_PROBE_BED_DISTANCE 5.0 // Higher than max bed level distance error in mm
+
 // Waits for a signal to start. Valid signals are probe hit and ok button.
 // This is needful if you have the probe trigger by hand.
 #define Z_PROBE_WAIT_BEFORE_TEST false
@@ -1100,7 +1115,7 @@ is always running and is not hung up for some unknown reason. */
    This feature requires a working z-probe and you should have z-endstop at the top not at the bottom.
    The same 3 points are used for the G29 command.
 */
-#define FEATURE_AUTOLEVEL true
+#define FEATURE_AUTOLEVEL false
 #define Z_PROBE_X1 -112.58
 #define Z_PROBE_Y1 -65
 #define Z_PROBE_X2 112.58
@@ -1157,7 +1172,8 @@ The following settings override uiconfig.h!
 11 = RepRapDiscount Full Graphic Smart Controller
 12 = FELIXPrinters Controller
 13 = SeeMeCNC Display on Rambo (ORION)
-
+14 = OpenHardware.co.za LCD2004 V2014
+15 = Sanguinololu + Panelolu2
 */
 #define FEATURE_CONTROLLER 0
 
@@ -1223,7 +1239,7 @@ same setting.
 /**
 Beeper sound definitions for short beeps during key actions
 and longer beeps for important actions.
-Parameter is delay in microseconds and the secons is the number of repetitions.
+Parameter is delay in microseconds and the second is the number of repetitions.
 Values must be in range 1..255
 */
 #define BEEPER_SHORT_SEQUENCE 2,2

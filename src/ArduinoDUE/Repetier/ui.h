@@ -389,8 +389,8 @@ class UIDisplay {
     void mediumAction();
     void pushMenu(void *men,bool refresh);
     void adjustMenuPos();
-    void setStatusP(PGM_P txt);
-    void setStatus(char *txt);
+    void setStatusP(PGM_P txt,bool error = false);
+    void setStatus(char *txt,bool error = false);
     inline void setOutputMaskBits(unsigned int bits) {outputMask|=bits;}
     inline void unsetOutputMaskBits(unsigned int bits) {outputMask&=~bits;}
 #if SDSUPPORT
@@ -632,6 +632,7 @@ void ui_check_slow_keys(int &action) {}
 
 #define SDSUPPORT true
 #define SDCARDDETECTINVERTED false
+#define SDCARDDETECT 	   -1
 
 #define UI_HAS_KEYS 1
 #define UI_HAS_BACK_KEY 1
@@ -839,7 +840,7 @@ void ui_check_slow_keys(int &action) {}
 #define BEEPER_SHORT_SEQUENCE 6,2 // Needs longer beep sequence
 #define BEEPER_LONG_SEQUENCE 24,8
 #define BEEPER_TYPE 1
-#define BEEPER_TYPE_INVERTING true
+#define BEEPER_TYPE_INVERTING false
 
 #if FEATURE_CONTROLLER==9   // 16x02 Display
  #define UI_COLS 16
@@ -999,6 +1000,124 @@ void ui_check_slow_keys(int &action) {}
 #endif
 #endif // Controller 13
 
+#if FEATURE_CONTROLLER == 14
+#define SDSUPPORT true
+#define SDCARDDETECT -1
+#define UI_HAS_KEYS 1
+#define UI_HAS_BACK_KEY 1
+#define UI_DISPLAY_TYPE 3
+#define UI_DISPLAY_CHARSET 1
+#define UI_COLS 20
+#define UI_ROWS 4
+#define UI_DISPLAY_I2C_CHIPTYPE 1
+#define UI_DISPLAY_I2C_ADDRESS 0x40
+#define UI_DISPLAY_I2C_OUTPUT_PINS 65504
+#define UI_DISPLAY_I2C_OUTPUT_START_MASK 0
+#define UI_DISPLAY_I2C_PULLUP 31
+#define UI_I2C_CLOCKSPEED 400000L
+#define UI_DISPLAY_RS_PIN BV(15)
+#define UIDISPLAY_RW_PIN BV(14)
+#define UIDISPLAY_ENABLE_PIN BV(13)
+#define UIDISPLAY_D0_PIN BV(12)
+#define UIDISPLAY_D1_PIN BV(11)
+#define UIDISPLAY_D2_PIN BV(10)
+#define UIDISPLAY_D3_PIN BV(9)
+#define UIDISPLAY_D4_PIN BV(12)
+#define UIDISPLAY_D5_PIN BV(11)
+#define UIDISPLAY_D6_PIN BV(10)
+#define UIDISPLAY_D7_PIN BV(9)
+#define UIINVERT_MENU_DIRECTION false
+#define UI_HAS_I2C_KEYS
+#define UI_HAS_I2C_ENCODER 0
+#define UI_I2C_KEY_ADDRESS 0x40
+
+#ifdef UI_MAIN
+void ui_init_keys() {}
+void ui_check_keys(int &action) {}
+inline void ui_check_slow_encoder() {
+HAL::i2cStartWait(UI_DISPLAY_I2C_ADDRESS+I2C_WRITE);
+HAL::i2cWrite(0x12); // GIOA
+HAL::i2cStop();
+HAL::i2cStartWait(UI_DISPLAY_I2C_ADDRESS+I2C_READ);
+unsigned int keymask = HAL::i2cReadAck();
+keymask = keymask + (HAL::i2cReadNak()<<8);
+HAL::i2cStop();
+}
+void ui_check_slow_keys(int &action) {
+HAL::i2cStartWait(UI_DISPLAY_I2C_ADDRESS+I2C_WRITE);
+HAL::i2cWrite(0x12); // GPIOA
+HAL::i2cStop();
+HAL::i2cStartWait(UI_DISPLAY_I2C_ADDRESS+I2C_READ);
+unsigned int keymask = HAL::i2cReadAck();
+keymask = keymask + (HAL::i2cReadNak()<<8);
+HAL::i2cStop();
+UI_KEYS_I2C_BUTTON_LOW(BV(4),UIACTION_OK); // push button, connects gnd to pin
+UI_KEYS_I2C_BUTTON_LOW(BV(1),UIACTION_BACK); // push button, connects gnd to pin
+UI_KEYS_I2C_BUTTON_LOW(BV(0),UIACTION_SD_PRINT); // push button, connects gnd to pin
+UI_KEYS_I2C_BUTTON_LOW(BV(3),UIACTION_PREVIOUS); // Up button
+UI_KEYS_I2C_BUTTON_LOW(BV(2),UIACTION_NEXT); // down button
+}
+#endif
+#endif // Controller 14
+
+ /*
+ 	Sanguinololu + panelolu2
+ */
+#if FEATURE_CONTROLLER == 15
+#define UI_HAS_KEYS 1
+#define UI_HAS_BACK_KEY 0
+#define UI_DISPLAY_TYPE 3
+#define UI_DISPLAY_CHARSET 2
+#define UI_COLS 20
+#define UI_ROWS 4
+#define UI_INVERT_MENU_DIRECTION false
+
+#define UI_DISPLAY_I2C_CHIPTYPE 1
+#define UI_DISPLAY_I2C_ADDRESS 0x40
+#define UI_DISPLAY_I2C_OUTPUT_PINS 65528
+#define UI_DISPLAY_I2C_OUTPUT_START_MASK 0
+#define UI_DISPLAY_I2C_PULLUP 23
+#define UI_I2C_CLOCKSPEED 100000L
+//#define UI_HAS_I2C_KEYS
+//#define UI_HAS_I2C_ENCODER 0
+//#define UI_I2C_KEY_ADDRESS UI_DISPLAY_I2C_ADDRESS
+#define BEEPER_TYPE 2
+#define BEEPER_TYPE_INVERTING true
+#define BEEPER_ADDRESS UI_DISPLAY_I2C_ADDRESS
+#define COMPILE_I2C_DRIVER
+
+#define UI_DISPLAY_RS_PIN 		_BV(15)
+#define UI_DISPLAY_RW_PIN 		_BV(14)
+#define UI_DISPLAY_ENABLE_PIN 	_BV(13)
+#define UI_DISPLAY_D0_PIN 		_BV(12)
+#define UI_DISPLAY_D1_PIN 		_BV(11)
+#define UI_DISPLAY_D2_PIN 		_BV(10)
+#define UI_DISPLAY_D3_PIN 		_BV(9)
+#define UI_DISPLAY_D4_PIN 		_BV(12)
+#define UI_DISPLAY_D5_PIN 		_BV(11)
+#define UI_DISPLAY_D6_PIN 		_BV(10)
+#define UI_DISPLAY_D7_PIN 		_BV(9)
+#define BEEPER_PIN _BV(5)
+#define UI_I2C_HEATBED_LED    _BV(8)
+#define UI_I2C_HOTEND_LED     _BV(7)
+#define UI_I2C_FAN_LED        _BV(6)
+
+#ifdef UI_MAIN
+void ui_init_keys() {
+	UI_KEYS_INIT_CLICKENCODER_LOW(10,11); // click encoder on pins 47 and 45. Phase is connected with gnd for signals.
+	UI_KEYS_INIT_BUTTON_LOW(30); // push button, connects gnd to pin
+}
+
+void ui_check_keys(int &action) {
+	 UI_KEYS_CLICKENCODER_LOW_REV(10,11); // click encoder on pins 47 and 45. Phase is connected with gnd for signals.
+	 UI_KEYS_BUTTON_LOW(30,UI_ACTION_OK); // push button, connects gnd to pin
+}
+
+inline void ui_check_slow_encoder() {}
+
+void ui_check_slow_keys(int &action) {}
+#endif
+#endif // Controller 15
 
 #if FEATURE_CONTROLLER>0
 #if UI_ROWS==4
@@ -1046,7 +1165,11 @@ void ui_check_slow_keys(int &action) {}
 #define UI_STATUS_UPD(status) {uid.setStatusP(PSTR(status));uid.refreshPage();}
 #define UI_STATUS_RAM(status) uid.setStatus(status);
 #define UI_STATUS_UPD_RAM(status) {uid.setStatus(status);uid.refreshPage();}
-#define UI_ERROR(msg) {uid.errorMsg=(void*)PSTR(msg);pushMenu((void*)&ui_menu_error,true);}
+#define UI_ERROR(status) uid.setStatusP(PSTR(status),true);
+#define UI_ERROR_UPD(status) {uid.setStatusP(PSTR(status),true);uid.refreshPage();}
+#define UI_ERROR_RAM(status) uid.setStatus(status,true);
+#define UI_ERROR_UPD_RAM(status) {uid.setStatus(status,true);uid.refreshPage();}
+//#define UI_ERROR(msg) {uid.errorMsg=(void*)PSTR(msg);pushMenu((void*)&ui_menu_error,true);}
 #define UI_CLEAR_STATUS {uid.statusMsg[0]=0;}
 #else
 #define UI_INITIALIZE {}
@@ -1054,10 +1177,14 @@ void ui_check_slow_keys(int &action) {}
 #define UI_MEDIUM {}
 #define UI_SLOW {}
 #define UI_STATUS(status) {}
+#define UI_STATUS_RAM(status) {}
 #define UI_STATUS_UPD(status) {}
+#define UI_STATUS_UPD_RAM(status) {}
 #define UI_CLEAR_STATUS {}
 #define UI_ERROR(msg) {}
-#define UI_STATUS_UPD_RAM(status) {}
+#define UI_ERROR_UPD(status) {}
+#define UI_ERROR_RAM(status) {}
+#define UI_ERROR_UPD_RAM(status) {}
 #endif  // Display
 
 // Beeper methods

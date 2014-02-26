@@ -22,6 +22,10 @@
 #ifndef PRINTER_H_INCLUDED
 #define PRINTER_H_INCLUDED
 
+union floatLong {
+    float f;
+    long l;
+};
 
 #define PRINTER_FLAG0_STEPPER_DISABLED      1
 #define PRINTER_FLAG0_SEPERATE_EXTRUDER_INT 2
@@ -35,6 +39,7 @@
 #define PRINTER_FLAG1_AUTOMOUNT             2
 #define PRINTER_FLAG1_ANIMATION             4
 #define PRINTER_FLAG1_ALLKILLED             8
+#define PRINTER_FLAG1_UI_ERROR_MESSAGE      16
 class Printer
 {
 public:
@@ -76,17 +81,17 @@ public:
 #if NONLINEAR_SYSTEM
     static long currentDeltaPositionSteps[4];
     static long maxDeltaPositionSteps;
-    static long deltaDiagonalStepsSquared;
-    static float deltaDiagonalStepsSquaredF;
+    static floatLong deltaDiagonalStepsSquaredA;
+    static floatLong deltaDiagonalStepsSquaredB;
+    static floatLong deltaDiagonalStepsSquaredC;
+    static float deltaMaxRadiusSquared;
     static long deltaAPosXSteps;
     static long deltaAPosYSteps;
     static long deltaBPosXSteps;
     static long deltaBPosYSteps;
     static long deltaCPosXSteps;
     static long deltaCPosYSteps;
-#ifdef DEBUG_DELTA_REALPOS
     static long realDeltaPositionSteps[3];
-#endif
 #endif
 #if FEATURE_Z_PROBE || MAX_HARDWARE_ENDSTOP_Z || NONLINEAR_SYSTEM
     static long stepsRemainingAtZHit;
@@ -121,7 +126,7 @@ public:
     static int feedrateMultiply;             ///< Multiplier for feedrate in percent (factor 1 = 100)
     static unsigned int extrudeMultiply;     ///< Flow multiplier in percdent (factor 1 = 100)
     static float maxJerk;                    ///< Maximum allowed jerk in mm/s
-#if DRIVE_SYSTEM!=3
+#if DRIVE_SYSTEM != 3
     static float maxZJerk;                   ///< Maximum allowed jerk in z direction in mm/s
 #endif
     static float offsetX;                     ///< X-offset for different extruder positions.
@@ -148,6 +153,12 @@ public:
 #ifdef XY_GANTRY
     static char motorX;
     static char motorY;
+#endif
+#ifdef DEBUG_SEGMENT_LENGTH
+    static float maxRealSegmentLength;
+#endif
+#ifdef DEBUG_REAL_JERK
+    static float maxRealJerk;
 #endif
     static inline void setMenuMode(uint8_t mode,bool on) {
         if(on)
@@ -337,6 +348,14 @@ public:
     static inline void setAnimation(uint8_t b)
     {
         flag1 = (b ? flag1 | PRINTER_FLAG1_ANIMATION : flag1 & ~PRINTER_FLAG1_ANIMATION);
+    }
+    static inline uint8_t isUIErrorMessage()
+    {
+        return flag1 & PRINTER_FLAG1_UI_ERROR_MESSAGE;
+    }
+    static inline void setUIErrorMessage(uint8_t b)
+    {
+        flag1 = (b ? flag1 | PRINTER_FLAG1_UI_ERROR_MESSAGE : flag1 & ~PRINTER_FLAG1_UI_ERROR_MESSAGE);
     }
     static inline void toggleAnimation() {
         setAnimation(!isAnimation());
@@ -579,6 +598,7 @@ public:
     static void moveToReal(float x,float y,float z,float e,float f);
     static void homeAxis(bool xaxis,bool yaxis,bool zaxis); /// Home axis
     static void setOrigin(float xOff,float yOff,float zOff);
+    static bool isPositionAllowed(float x,float y,float z);
     static inline int getFanSpeed() {
         return (int)pwm_pos[NUM_EXTRUDER+2];
     }

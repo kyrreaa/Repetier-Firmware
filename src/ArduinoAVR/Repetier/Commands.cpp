@@ -22,13 +22,17 @@
 #include "Repetier.h"
 
 const int sensitive_pins[] PROGMEM = SENSITIVE_PINS; // Sensitive pin list for M42
-int Commands::lowestRAMValue=MAX_RAM;
-int Commands::lowestRAMValueSend=MAX_RAM;
+int Commands::lowestRAMValue = MAX_RAM;
+int Commands::lowestRAMValueSend = MAX_RAM;
 
 void Commands::commandLoop()
 {
     while(true)
     {
+#ifdef DEBUG_PRINT
+        debugWaitLoop = 1;
+#endif
+
         GCode::readFromSerial();
         GCode *code = GCode::peekCurrentCommand();
         //UI_SLOW; // do longer timed user interface action
@@ -81,6 +85,9 @@ void Commands::checkForPeriodicalActions()
 */
 void Commands::waitUntilEndOfAllMoves()
 {
+#ifdef DEBUG_PRINT
+    debugWaitLoop = 8;
+#endif
     while(PrintLine::hasLines())
     {
         GCode::readFromSerial();
@@ -91,6 +98,9 @@ void Commands::waitUntilEndOfAllMoves()
 void Commands::waitUntilEndOfAllBuffers()
 {
     GCode *code;
+#ifdef DEBUG_PRINT
+    debugWaitLoop = 9;
+#endif
     while(PrintLine::hasLines() || (code = GCode::peekCurrentCommand()) != NULL)
     {
         GCode::readFromSerial();
@@ -139,10 +149,13 @@ void Commands::printTemperatures(bool showRaw)
     float temp = Extruder::current->tempControl.currentTemperatureC;
 #if HEATED_BED_SENSOR_TYPE==0
     Com::printF(Com::tTColon,temp);
+    Com::printF(Com::tSpaceSlash,Extruder::current->tempControl.targetTemperatureC,0);
 #else
     Com::printF(Com::tTColon,temp);
-    Com::printF(Com::tSpaceBColon,Extruder::getHeatedBedTemperature());
+    Com::printF(Com::tSpaceSlash,Extruder::current->tempControl.targetTemperatureC,0);
 #if HAVE_HEATED_BED
+    Com::printF(Com::tSpaceBColon,Extruder::getHeatedBedTemperature());
+    Com::printF(Com::tSpaceSlash,heatedBedController.targetTemperatureC,0);
     if(showRaw)
     {
         Com::printF(Com::tSpaceRaw,(int)NUM_EXTRUDER);
@@ -159,6 +172,8 @@ void Commands::printTemperatures(bool showRaw)
     {
         Com::printF(Com::tSpaceT,(int)i);
         Com::printF(Com::tColon,extruder[i].tempControl.currentTemperatureC);
+        Com::printF(Com::tTColon,temp);
+        Com::printF(Com::tSpaceSlash,extruder[i].tempControl.targetTemperatureC,0);
 #ifdef TEMP_PID
         Com::printF(Com::tSpaceAt,(int)i);
         Com::printF(Com::tColon,(pwm_pos[extruder[i].tempControl.pwmIndex])); // Show output of autotune when tuning!
@@ -209,8 +224,8 @@ void Commands::reportPrinterUsage()
     for(uint8_t i=0; i<NUM_EXTRUDER; i++)
         if(tempController[i]->targetTemperatureC>15) alloff = false;
 
-    long seconds = (alloff ? 0 : (HAL::timeInMilliseconds()-Printer::msecondsPrinting)/1000)+HAL::eprGetInt32(EPR_PRINTING_TIME);
-    long tmp = seconds/86400;
+    int32_t seconds = (alloff ? 0 : (HAL::timeInMilliseconds()-Printer::msecondsPrinting)/1000)+HAL::eprGetInt32(EPR_PRINTING_TIME);
+    int32_t tmp = seconds/86400;
     seconds-=tmp*86400;
     Com::printF(Com::tPrintingTime,tmp);
     tmp=seconds/3600;
@@ -411,7 +426,7 @@ void microstepInit()
 */
 void Commands::executeGCode(GCode *com)
 {
-    unsigned long codenum; //throw away variable
+    uint32_t codenum; //throw away variable
 #ifdef INCLUDE_DEBUG_COMMUNICATION
     if(Printer::debugCommunication())
     {
@@ -564,7 +579,7 @@ void Commands::executeGCode(GCode *com)
             if(com->hasP()) codenum = com->P; // milliseconds to wait
             if(com->hasS()) codenum = com->S * 1000; // seconds to wait
             codenum += HAL::timeInMilliseconds();  // keep track of when we started waiting
-            while((unsigned long)(codenum-HAL::timeInMilliseconds())  < 2000000000 )
+            while((uint32_t)(codenum-HAL::timeInMilliseconds())  < 2000000000 )
             {
                 GCode::readFromSerial();
                 Commands::checkForPeriodicalActions();
@@ -578,8 +593,13 @@ void Commands::executeGCode(GCode *com)
             break;
         case 28:  //G28 Home all Axis one at a time
         {
-            uint8_t home_all_axis = (com->hasNoXYZ());
-            Printer::homeAxis(home_all_axis || com->hasX(),home_all_axis || com->hasY(),home_all_axis || com->hasZ());
+            uint8_t home_all_axis = (com->hasNoXYZ() && !com->hasE());
+            if(com->hasE())
+            {
+                Printer::currentPositionSteps[E_AXIS] = 0;
+            }
+            if(home_all_axis || !com->hasNoXYZ())
+                Printer::homeAxis(home_all_axis || com->hasX(),home_all_axis || com->hasY(),home_all_axis || com->hasZ());
             Printer::updateCurrentPosition();
         }
         break;
@@ -604,36 +624,49 @@ void Commands::executeGCode(GCode *com)
             Com::printFLN(Com::tZProbeAverage,sum);
             if(com->hasS() && com->S)
             {
-                Printer::currentPositionSteps[2] = sum*Printer::axisStepsPerMM[2];
-                Com::printInfoFLN(Com::tZProbeZReset);
 #if MAX_HARDWARE_ENDSTOP_Z
-                Printer::zLength = Printer::runZMaxProbe()+sum-ENDSTOP_Z_BACK_ON_HOME;
+#if DRIVE_SYSTEM == 3
+                Printer::updateCurrentPosition();
+                Printer::zLength += sum - Printer::currentPosition[Z_AXIS];
+                Printer::updateDerivedParameter();
+                Printer::homeAxis(true,true,true);
+#else
+                Printer::currentPositionSteps[Z_AXIS] = sum * Printer::axisStepsPerMM[Z_AXIS];
+                Printer::zLength = Printer::runZMaxProbe() + sum-ENDSTOP_Z_BACK_ON_HOME;
+#endif
+                Com::printInfoFLN(Com::tZProbeZReset);
                 Com::printFLN(Com::tZProbePrinterHeight,Printer::zLength);
+#else
+                Printer::currentPositionSteps[Z_AXIS] = sum * Printer::axisStepsPerMM[Z_AXIS];
+                Com::printFLN(PSTR("Adjusted z origin"));
 #endif
             }
             Printer::feedrate = oldFeedrate;
             Printer::setAutolevelActive(oldAutolevel);
-            printCurrentPosition();
             if(com->hasS() && com->S == 2)
                 EEPROM::storeDataIntoEEPROM();
             Printer::updateCurrentPosition(true);
+            printCurrentPosition();
         }
         break;
-        case 30: //single probe set Z0
+        case 30: // G30 single probe set Z0
         {
             uint8_t p = (com->hasP() ? (uint8_t)com->P : 3);
             bool oldAutolevel = Printer::isAutolevelActive();
             Printer::setAutolevelActive(false);
             Printer::runZProbe(p & 1,p & 2);
             Printer::setAutolevelActive(oldAutolevel);
+            Printer::updateCurrentPosition(p & 1);
+            printCurrentPosition();
         }
         break;
-        case 31:  //display hall sensor output
+        case 31:  // G31 display hall sensor output
             Com::printF(Com::tZProbeState);
             Com::print(Printer::isZProbeHit() ? 'H' : 'L');
             Com::println();
             break;
-        case 32: // Auto-Bed leveling
+#if FEATURE_AUTOLEVEL
+        case 32: // G32 Auto-Bed leveling
         {
             //bool iterate = com->hasP() && com->P>0;
             Printer::coordinateOffset[0] = Printer::coordinateOffset[1] = Printer::coordinateOffset[2] = 0;
@@ -671,7 +704,7 @@ void Commands::executeGCode(GCode *com)
                      Printer::offsetY = 0;*/
                 Printer::zLength += (h3+z)-Printer::currentPosition[Z_AXIS];
 #else
-                long zBottom = Printer::currentPositionSteps[Z_AXIS] = (h3+z)*Printer::axisStepsPerMM[Z_AXIS];
+                int32_t zBottom = Printer::currentPositionSteps[Z_AXIS] = (h3+z)*Printer::axisStepsPerMM[Z_AXIS];
                 Printer::zLength = Printer::runZMaxProbe()+zBottom*Printer::invAxisStepsPerMM[2]-ENDSTOP_Z_BACK_ON_HOME;
 #endif
                 Com::printFLN(Com::tZProbePrinterHeight,Printer::zLength);
@@ -694,6 +727,7 @@ void Commands::executeGCode(GCode *com)
             Printer::feedrate = oldFeedrate;
         }
         break;
+#endif
 #endif
         case 90: // G90
             Printer::relativeCoordinateMode = false;
@@ -736,10 +770,10 @@ void Commands::executeGCode(GCode *com)
             Printer::coordinateOffset[Y_AXIS] = 0;
             Printer::coordinateOffset[Z_AXIS] = 0;
             Printer::deltaMoveToTopEndstops(Printer::homingFeedrate[Z_AXIS]);
-            long m = RMath::max(Printer::stepsRemainingAtXHit,RMath::max(Printer::stepsRemainingAtYHit,Printer::stepsRemainingAtZHit));
-            long offx = m-Printer::stepsRemainingAtXHit;
-            long offy = m-Printer::stepsRemainingAtYHit;
-            long offz = m-Printer::stepsRemainingAtZHit;
+            int32_t m = RMath::max(Printer::stepsRemainingAtXHit,RMath::max(Printer::stepsRemainingAtYHit,Printer::stepsRemainingAtZHit));
+            int32_t offx = m-Printer::stepsRemainingAtXHit;
+            int32_t offy = m-Printer::stepsRemainingAtYHit;
+            int32_t offz = m-Printer::stepsRemainingAtZHit;
             Com::printFLN(Com::tTower1,offx);
             Com::printFLN(Com::tTower2,offy);
             Com::printFLN(Com::tTower3,offz);
@@ -768,10 +802,10 @@ void Commands::executeGCode(GCode *com)
             Printer::currentDeltaPositionSteps[Y_AXIS] = 0;
             Printer::currentDeltaPositionSteps[Z_AXIS] = Printer::zMaxSteps;
             Printer::deltaMoveToTopEndstops(Printer::homingFeedrate[Z_AXIS]);
-            long m = Printer::zMaxSteps*1.5;
-            long offx = m-Printer::stepsRemainingAtXHit;
-            long offy = m-Printer::stepsRemainingAtYHit;
-            long offz = m-Printer::stepsRemainingAtZHit;
+            int32_t m = Printer::zMaxSteps*1.5;
+            int32_t offx = m-Printer::stepsRemainingAtXHit;
+            int32_t offy = m-Printer::stepsRemainingAtYHit;
+            int32_t offz = m-Printer::stepsRemainingAtZHit;
             Com::printFLN(Com::tTower1,offx);
             Com::printFLN(Com::tTower2,offy);
             Com::printFLN(Com::tTower3,offz);
@@ -779,7 +813,6 @@ void Commands::executeGCode(GCode *com)
             Printer::homeAxis(true,true,true);
             }
             break;
-#ifdef DEBUG_DELTA_REALPOS
         case 134:
             Com::printF(PSTR("CompDelta:"),Printer::currentDeltaPositionSteps[X_AXIS]);
             Com::printF(Com::tComma,Printer::currentDeltaPositionSteps[Y_AXIS]);
@@ -791,7 +824,6 @@ void Commands::executeGCode(GCode *com)
             Com::printF(PSTR("PosFromSteps:"));
             printCurrentPosition();
             break;
-#endif
 
 #endif // DRIVE_SYSTEM
         }
@@ -1090,7 +1122,7 @@ void Commands::executeGCode(GCode *com)
             break;
         case 85: // M85
             if(com->hasS())
-                maxInactiveTime = (long)com->S * 1000;
+                maxInactiveTime = (int32_t)com->S * 1000;
             else
                 maxInactiveTime = 0;
             break;
@@ -1103,6 +1135,32 @@ void Commands::executeGCode(GCode *com)
             {
                 Extruder::current->stepsPerMM = com->E;
                 Extruder::selectExtruderById(Extruder::current->id);
+            }
+            break;
+        case 99: // M99 S<time>
+            {
+                millis_t wait = 10000;
+                if(com->hasS())
+                    wait = 1000*com->S;
+                if(com->hasX())
+                    Printer::disableXStepper();
+                if(com->hasY())
+                    Printer::disableYStepper();
+                if(com->hasZ())
+                    Printer::disableZStepper();
+                wait += HAL::timeInMilliseconds();
+#ifdef DEBUG_PRINT
+                    debugWaitLoop = 2;
+#endif
+                while(wait-HAL::timeInMilliseconds() < 100000) {
+                    Printer::defaultLoopActions();
+                }
+                if(com->hasX())
+                    Printer::enableXStepper();
+                if(com->hasY())
+                    Printer::enableYStepper();
+                if(com->hasZ())
+                    Printer::enableZStepper();
             }
             break;
         case 111:
@@ -1244,7 +1302,7 @@ void Commands::executeGCode(GCode *com)
             if(com->hasS())
             {
                 BEGIN_INTERRUPT_PROTECTED
-                Printer::extruderStepsNeeded+=com->S;
+                Printer::extruderStepsNeeded += com->S;
                 END_INTERRUPT_PROTECTED
             }
             break;
@@ -1361,7 +1419,7 @@ void Commands::executeGCode(GCode *com)
             break;
             /*        case 700: // test new square root function
                         if(com->hasS())
-                            Com::printFLN(Com::tInfo,(long)HAL::integerSqrt(com->S));
+                            Com::printFLN(Com::tInfo,(int32_t)HAL::integerSqrt(com->S));
                         break;*/
 #endif // FEATURE_AUTOLEVEL
 #endif // FEATURE_Z_PROBE
@@ -1374,6 +1432,7 @@ void Commands::executeGCode(GCode *com)
                     s = com->S;
                 HAL::servoMicroseconds(com->P,s);
             }
+            break;
 #endif // FEATURE_SERVO
 #if Z_HOME_DIR>0 && MAX_HARDWARE_ENDSTOP_Z
         case 251:
@@ -1411,7 +1470,37 @@ void Commands::executeGCode(GCode *com)
                 Com::printF(PSTR("Rem:"),PrintLine::cur->stepsRemaining);
                 Com::printFLN(PSTR("Int:"),Printer::interval);
             }
+            break;
 #endif // DEBUG_QUEUE_MOVE
+#ifdef DEBUG_SEGMENT_LENGTH
+        case 534:
+            Com::printFLN(PSTR("Max. segment size:"),Printer::maxRealSegmentLength);
+            if(com->hasS())
+                Printer::maxRealSegmentLength = 0;
+            break;
+#endif
+#ifdef DEBUG_REAL_JERK
+            Com::printFLN(PSTR("Max. jerk measured:"),Printer::maxRealJerk);
+            if(com->hasS())
+                Printer::maxRealJerk = 0;
+            break;
+#endif
+        case 535:
+            Com::printF(PSTR("Last commanded position:"),Printer::lastCmdPos[X_AXIS]);
+            Com::printF(Com::tComma,Printer::lastCmdPos[Y_AXIS]);
+            Com::printFLN(Com::tComma,Printer::lastCmdPos[Z_AXIS]);
+            Com::printF(PSTR("Current position:"),Printer::currentPosition[X_AXIS]);
+            Com::printF(Com::tComma,Printer::currentPosition[Y_AXIS]);
+            Com::printFLN(Com::tComma,Printer::currentPosition[Z_AXIS]);
+            Com::printF(PSTR("Position steps:"),Printer::currentPositionSteps[X_AXIS]);
+            Com::printF(Com::tComma,Printer::currentPositionSteps[Y_AXIS]);
+            Com::printFLN(Com::tComma,Printer::currentPositionSteps[Z_AXIS]);
+#if NONLINEAR_SYSTEM
+            Com::printF(PSTR("Nonlin. position steps:"),Printer::currentDeltaPositionSteps[X_AXIS]);
+            Com::printF(Com::tComma,Printer::currentDeltaPositionSteps[Y_AXIS]);
+            Com::printFLN(Com::tComma,Printer::currentDeltaPositionSteps[Z_AXIS]);
+#endif // NONLINEAR_SYSTEM
+            break;
         }
     }
     else if(com->hasT())      // Process T code
