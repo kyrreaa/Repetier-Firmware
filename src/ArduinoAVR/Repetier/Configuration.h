@@ -948,7 +948,7 @@ For more informations, read the wiki.
 
 Uncomment to allow a quadratic advance dependency. Linear is the dominant value, so no real need
 to activate the quadratic term. Only adds lots of computations and storage usage. */
-#define ENABLE_QUADRATIC_ADVANCE
+// #define ENABLE_QUADRATIC_ADVANCE
 
 
 // ##########################################################################################
