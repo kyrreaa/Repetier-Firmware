@@ -479,6 +479,15 @@ void EEPROM::readDataFromEEPROM()
 #if DRIVE_SYSTEM!=3
     Printer::maxZJerk = HAL::eprGetFloat(EPR_MAX_ZJERK);
 #endif
+#if DRIVE_SYSTEM==3
+//     HAL::eprSetFloat(EPR_DELTA_DIAGONAL_ROD_LENGTH,DELTA_DIAGONAL_ROD);
+//     HAL::eprSetFloat(EPR_DELTA_HORIZONTAL_RADIUS,DELTA_RADIUS);
+    Printer::deltaSPSPrint = HAL::eprGetInt16(EPR_DELTA_SEGMENTS_PER_SECOND_PRINT);
+    Printer::deltaSPSMove = HAL::eprGetInt16(EPR_DELTA_SEGMENTS_PER_SECOND_MOVE);
+//     HAL::eprSetInt16(EPR_DELTA_TOWERX_OFFSET_STEPS,DELTA_X_ENDSTOP_OFFSET_STEPS);
+//     HAL::eprSetInt16(EPR_DELTA_TOWERY_OFFSET_STEPS,DELTA_Y_ENDSTOP_OFFSET_STEPS);
+//     HAL::eprSetInt16(EPR_DELTA_TOWERZ_OFFSET_STEPS,DELTA_Z_ENDSTOP_OFFSET_STEPS);
+#endif
 #ifdef RAMP_ACCELERATION
     Printer::maxAccelerationMMPerSquareSecond[0] = HAL::eprGetFloat(EPR_X_MAX_ACCEL);
     Printer::maxAccelerationMMPerSquareSecond[1] = HAL::eprGetFloat(EPR_Y_MAX_ACCEL);

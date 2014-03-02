@@ -42,6 +42,10 @@ unsigned long Printer::maxTravelAccelerationStepsPerSquareSecond[4];
 #if NONLINEAR_SYSTEM
 long Printer::currentDeltaPositionSteps[4];
 uint8_t lastMoveID = 0; // Last move ID
+
+// Shadowing of eeprom values
+int16_t Printer::deltaSPSPrint;
+int16_t Printer::deltaSPSMove;
 #endif
 uint8_t Printer::relativeCoordinateMode = false;  ///< Determines absolute (false) or relative Coordinates (true).
 uint8_t Printer::relativeExtruderCoordinateMode = false;  ///< Determines Absolute or Relative E Codes while in Absolute Coordinates mode. E is always relative in Relative Coordinates mode.

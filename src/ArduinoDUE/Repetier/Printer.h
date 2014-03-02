@@ -92,6 +92,10 @@ public:
     static long deltaCPosXSteps;
     static long deltaCPosYSteps;
     static long realDeltaPositionSteps[3];
+
+// Shadowing of eeprom values
+    static int16_t deltaSPSPrint;
+    static int16_t deltaSPSMove;
 #endif
 #if FEATURE_Z_PROBE || MAX_HARDWARE_ENDSTOP_Z || NONLINEAR_SYSTEM
     static long stepsRemainingAtZHit;

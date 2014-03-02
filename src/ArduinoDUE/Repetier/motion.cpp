@@ -1285,7 +1285,7 @@ void PrintLine::queueDeltaMove(uint8_t check_endstops,uint8_t pathOptimize, uint
 #ifdef DEBUG_SPLIT
         Com::printFLN(Com::tDBGDeltaSeconds, seconds);
 #endif
-        segmentCount = RMath::max(1, int(float((cartesianDir & 136)==136 ? EEPROM::deltaSegmentsPerSecondPrint() : EEPROM::deltaSegmentsPerSecondMove()) * seconds));
+        segmentCount = RMath::max(1, int(float((cartesianDir & 136)==136 ? Printer::deltaSPSPrint : Printer::deltaSPSMove) * seconds));
 #ifdef DEBUG_SEGMENT_LENGTH
         float segDist = cartesianDistance/(float)segmentCount;
         if(segDist > Printer::maxRealSegmentLength) {
