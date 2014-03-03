@@ -73,11 +73,10 @@ To override EEPROM settings with config settings, set EEPROM_MODE 0
 // PiBot for Repetier V1.0-1.3= 314
 // PiBot for Repetier V1.4    = 315
 // Sanguish Beta              = 501
-// ArxPrint Beta              = 502
 // Unique One rev. A          = 88
 // User layout defined in userpins.h = 999
 
-#define MOTHERBOARD 502
+#define MOTHERBOARD 999
 
 #include "pins.h"
 
