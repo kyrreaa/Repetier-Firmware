@@ -280,7 +280,7 @@ void PrintLine::calculateMove(float axis_diff[],uint8_t pathOptimize)
     axisInterval[VIRTUAL_AXIS] = fabs(axis_diff[VIRTUAL_AXIS])*F_CPU/(Printer::maxFeedrate[X_AXIS]*stepsRemaining);
 #endif
 
-    fullInterval = limitInterval>200 ? limitInterval : 200; // This is our target speed
+    fullInterval = limitInterval>(F_CPU/65000) ? limitInterval : (F_CPU/65000); // This is our target speed
     // new time at full speed = limitInterval*p->stepsRemaining [ticks]
     timeForMove = (float)limitInterval * (float)stepsRemaining; // for large z-distance this overflows with long computation
     float inv_time_s = (float)F_CPU / timeForMove;
