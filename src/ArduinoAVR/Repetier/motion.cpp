@@ -1840,16 +1840,16 @@ long PrintLine::bresenhamStep() // Version for delta printer
                         if(cur->vMax>STEP_DOUBLER_FREQUENCY*2)
                         {
                             Printer::stepsPerTimerCall = 4;
-                            Printer::interval = cur->fullInterval>>2;
+                            Printer::interval = cur->fullInterval<<2;
                         }
                         else
                         {
                             Printer::stepsPerTimerCall = 2;
-                            Printer::interval = cur->fullInterval>>1;
+                            Printer::interval = cur->fullInterval<<1;
                         }
 #else
                         Printer::stepsPerTimerCall = 2;
-                        Printer::interval = cur->fullInterval>>1;
+                        Printer::interval = cur->fullInterval<<1;
 #endif
                     }
                     else
