@@ -35,7 +35,7 @@ to test your data througput or search for communication problems. */
 #define INCLUDE_DEBUG_COMMUNICATION
 /** Allows M111 so set bit 6 (32) which disables moves, at the first tried step. In combination
 with a dry run, you can test the speed of path computations, which are still performed. */
-#define INCLUDE_DEBUG_NO_MOVE
+//#define INCLUDE_DEBUG_NO_MOVE
 /** Writes the free RAM to output, if it is less then at the last test. Should always return
 values >500 for safety, since it doesn't catch every function call. Nice to tweak cache
 usage or for seraching for memory induced errors. Switch it off for production, it costs execution time. */
