@@ -587,6 +587,8 @@ SIGNAL (TIMER3_COMPA_vect)
 
 // ================== Interrupt handling ======================
 
+long stepperWait = 0;
+
 /** \brief Sets the timer 1 compare value to delay ticks.
 
 This function sets the OCR1A compare counter  to get the next interrupt
@@ -645,7 +647,6 @@ inline void setTimer(uint32_t delay)
 }
 
 volatile uint8_t insideTimer1 = 0;
-long stepperWait = 0;
 /** \brief Timer interrupt routine to drive the stepper motors.
 */
 ISR(TIMER1_COMPA_vect)
