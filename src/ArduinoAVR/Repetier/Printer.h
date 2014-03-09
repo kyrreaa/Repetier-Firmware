@@ -525,7 +525,7 @@ public:
         ANALYZER_OFF(ANALYZER_CH6);
         ANALYZER_OFF(ANALYZER_CH7);
     }
-    static inline unsigned int updateStepsPerTimerCall(unsigned int vbase)
+    static inline unsigned int updateStepsPerTimerCall(unsigned long vbase)
     {
         if(vbase>STEP_DOUBLER_FREQUENCY)
         {
