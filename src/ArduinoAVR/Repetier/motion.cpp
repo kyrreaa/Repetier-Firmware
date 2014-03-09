@@ -1807,8 +1807,8 @@ long PrintLine::bresenhamStep() // Version for delta printer
             {
                 Printer::vMaxReached = HAL::ComputeV(Printer::timer,cur->fAcceleration) + cur->vStart;
                 if(Printer::vMaxReached>cur->vMax) Printer::vMaxReached = cur->vMax;
-                unsigned long v = Printer::updateStepsPerTimerCall(Printer::vMaxReached);
-                Printer::interval = F_CPU/v; //HAL::CPUDivU2(v);
+                unsigned int v = Printer::updateStepsPerTimerCall(Printer::vMaxReached);
+                Printer::interval = HAL::CPUDivU2(v);
                 Printer::timer += Printer::interval;
                 cur->updateAdvanceSteps(Printer::vMaxReached,maxLoops,true);
             }
