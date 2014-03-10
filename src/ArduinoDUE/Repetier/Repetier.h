@@ -41,19 +41,21 @@ values >500 for safety, since it doesn't catch every function call. Nice to twea
 usage or for seraching for memory induced errors. Switch it off for production, it costs execution time. */
 //#define DEBUG_FREE_MEMORY
 //#define DEBUG_ADVANCE
-/** \brief print ops related debug info. */
-//#define DEBUG_OPS
 /** If enabled, writes the created generic table to serial port at startup. */
 //#define DEBUG_GENERIC
 /** If enabled, steps to move and moved steps are compared. */
 //#define DEBUG_STEPCOUNT
 /** This enables code to make M666 drop an ok, so you get problems with communication. It is to test host robustness. */
 #define DEBUG_COM_ERRORS
-//#define DEBUG_DELTA_OVERFLOW
-// Add write debug to quicksettings menu to debug some vars during hang
+/** Adds a menu point in quick settings to write debg informations to the host in case of hangs where the ui still works. */
 //#define DEBUG_PRINT
+//#define DEBUG_DELTA_OVERFLOW
+//#define DEBUG_DELTA_REALPOS
 //#define DEBUG_SPLIT
-
+// Find the longest segment length during a print
+//#define DEBUG_SEGMENT_LENGTH
+// Find the maximum real jerk during a print
+//#define DEBUG_REAL_JERK
 // Uncomment the following line to enable debugging. You can better control debugging below the following line
 //#define DEBUG
 
@@ -114,6 +116,16 @@ usage or for seraching for memory induced errors. Switch it off for production, 
 
 #include "Configuration.h"
 
+#ifndef FEATURE_BABYSTEPPING
+#define FEATURE_BABYSTEPPING 0
+#define BABYSTEP_MULTIPLICATOR 1
+#endif
+
+#if !defined(Z_PROBE_REPETITIONS) || Z_PROBE_REPETITIONS < 1
+#define Z_PROBE_SWITCHING_DISTANCE 0.5 // Distance to safely untrigger probe
+#define Z_PROBE_REPETITIONS 1
+#endif
+
 #define SPEED_MIN_MILLIS 300
 #define SPEED_MAX_MILLIS 50
 #define SPEED_MAGNIFICATION 100.0f
@@ -122,7 +134,7 @@ usage or for seraching for memory induced errors. Switch it off for production, 
 #define UI_SPEEDDEPENDENT_POSITIONING true
 #endif
 
-#if DRIVE_SYSTEM==3 || DRIVE_SYSTEM==4
+#if DRIVE_SYSTEM==3 || DRIVE_SYSTEM==4 || DRIVE_SYSTEM==5 || DRIVE_SYSTEM==6
 #define NONLINEAR_SYSTEM true
 #else
 #define NONLINEAR_SYSTEM false
@@ -247,6 +259,7 @@ usage or for seraching for memory induced errors. Switch it off for production, 
 #define MENU_MODE_SD_PRINTING 2
 #define MENU_MODE_SD_PAUSED 4
 #define MENU_MODE_FAN_RUNNING 8
+#define MENU_MODE_PRINTING 16
 
 #include "HAL.h"
 #include "gcode.h"
@@ -321,6 +334,8 @@ public:
         if(a<b) return b;
         return a;
     }
+    static inline long sqr(long a) {return a*a;}
+    static inline float sqr(float a) {return a*a;}
 };
 
 extern const uint8 osAnalogInputChannels[] PROGMEM;
@@ -445,6 +460,9 @@ extern SDCard sd;
 extern volatile int waitRelax; // Delay filament relax at the end of print, could be a simple timeout
 extern void updateStepsParameter(PrintLine *p/*,uint8_t caller*/);
 
+#ifdef DEBUG_PRINT
+extern int debugWaitLoop;
+#endif
 
 #if NONLINEAR_SYSTEM
 #define NUM_AXIS 4

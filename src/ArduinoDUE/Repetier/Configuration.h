@@ -51,6 +51,7 @@ To override EEPROM settings with config settings, set EEPROM_MODE 0
 //// The following define selects which electronics board you have. Please choose the one that matches your setup
 // Arduino Due                = 401 // This is only experimental
 // Arduino Due with RADDS     = 402
+// Arduino Due with RAMPS-FD  = 403
 
 #define MOTHERBOARD 402
 
@@ -382,6 +383,8 @@ Set value to 1: Scale PID by EXT0_PID_MAX/256 and then clip to EXT0_PID_MAX.
 If your EXT0_PID_MAX is low, you should prefer the second method.
 */
 #define SCALE_PID_TO_MAX 0
+
+#define HEATER_PWM_SPEED 1 // How fast ist pwm signal 0 = 15.25Hz, 1 = 30.51Hz, 2 = 61.03Hz, 3 = 122.06Hz
 
 /** Temperature range for target temperature to hold in M109 command. 5 means +/-5 degC
 
@@ -721,6 +724,14 @@ on this endstop.
 #define DELTA_RADIUS_CORRECTION_A 0
 #define DELTA_RADIUS_CORRECTION_B 0
 #define DELTA_RADIUS_CORRECTION_C 0
+
+/** Correction of the default diagonal size. Value gets added.*/
+#define DELTA_DIAGONAL_CORRECTION_A 0
+#define DELTA_DIAGONAL_CORRECTION_B 0
+#define DELTA_DIAGONAL_CORRECTION_C 0
+
+/** Max. radius the printer should be able to reach. */
+#define DELTA_MAX_RADIUS 200
 
 /** \brief Horizontal offset of the universal joints on the end effector (moving platform).
 */
@@ -1063,6 +1074,8 @@ is always running and is not hung up for some unknown reason. */
 /** Speed of z-axis in mm/s when probing */
 #define Z_PROBE_SPEED 2
 #define Z_PROBE_XY_SPEED 150
+#define Z_PROBE_SWITCHING_DISTANCE 1.5 // Distance to safely switch off probe
+#define Z_PROBE_REPETITIONS 5 // Repetitions for probing at one point. 
 /** The height is the difference between activated probe position and nozzle height. */
 #define Z_PROBE_HEIGHT 39.91
 /** These scripts are run before resp. after the z-probe is done. Add here code to activate/deactivate probe if needed. */
@@ -1081,8 +1094,14 @@ is always running and is not hung up for some unknown reason. */
 #define Z_PROBE_X3 0
 #define Z_PROBE_Y3 80
 
+/* Babystepping allows to change z height during print without changing official z height */
+#define FEATURE_BABYSTEPPING 0
+/* If you have a threaded rod, you want a higher multiplicator to see an effect. Limit value to 50 or you get easily overflows.*/
+#define BABYSTEP_MULTIPLICATOR 1
+
 /* Define a pin to tuen light on/off */
 #define CASE_LIGHTS_PIN -1
+#define CASE_LIGHT_DEFAULT_ON 1
 
 /** Set to false to disable SD support: */
 #ifndef SDSUPPORT  // Some boards have sd support on board. These define the values already in pins.h
@@ -1144,7 +1163,7 @@ Select the language to use.
 #define UI_LANGUAGE 1
 
 // This is line 2 of the status display at startup. Change to your like.
-#define UI_VERSION_STRING2 "Delta Tower"
+#define UI_PRINTER_NAME "Ordbot"
 #define UI_PRINTER_COMPANY "RepRapDiscount"
 
 

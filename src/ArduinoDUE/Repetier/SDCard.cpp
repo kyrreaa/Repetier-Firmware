@@ -84,6 +84,10 @@ void SDCard::initsd()
 {
     sdactive = false;
 #if SDSS >- 1
+#if defined(SDCARDDETECT) && SDCARDDETECT>-1
+    if(READ(SDCARDDETECT) != SDCARDDETECTINVERTED)
+        return;
+#endif
     /*if(dir[0].isOpen())
         dir[0].close();*/
     if(!fat.begin(SDSS,SPI_FULL_SPEED))
@@ -136,8 +140,13 @@ void SDCard::pausePrint(bool intern)
     Printer::setMenuMode(MENU_MODE_SD_PAUSED,true);
 #if FEATURE_MEMORY_POSITION
     if(intern) {
+        Commands::waitUntilEndOfAllBuffers();
         Printer::MemoryPosition();
-        Printer::moveToReal(Printer::xMin,Printer::yMin+Printer::yLength,Printer::currentPosition[Z_AXIS],Printer::currentPosition[E_AXIS],Printer::maxFeedrate[X_AXIS]);
+#if DRIVE_SYSTEM==3
+        Printer::moveToReal(0,0.4*Printer::yLength,Printer::currentPosition[Z_AXIS],IGNORE_COORDINATE,Printer::maxFeedrate[X_AXIS]);
+#else
+        Printer::moveToReal(Printer::xMin,Printer::yMin+Printer::yLength,Printer::currentPosition[Z_AXIS],IGNORE_COORDINATE,Printer::maxFeedrate[X_AXIS]);
+#endif
     }
 #endif
 }
@@ -148,8 +157,10 @@ void SDCard::continuePrint(bool intern)
 #if FEATURE_MEMORY_POSITION
     if(intern) {
         Printer::GoToMemoryPosition(true,true,false,true,Printer::maxFeedrate[X_AXIS]);
+        Printer::GoToMemoryPosition(false,false,true,false,Printer::maxFeedrate[Z_AXIS]);
     }
 #endif
+    sdmode = true;
 }
 void SDCard::stopPrint()
 {
