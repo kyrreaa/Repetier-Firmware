@@ -1707,10 +1707,29 @@ long PrintLine::bresenhamStep() // Version for delta printer
         //Determine direction of movement
         if (curd)
         {
-            Printer::setXDirection(curd->isXPositiveMove());
-            Printer::setYDirection(curd->isYPositiveMove());
-            Printer::setZDirection(curd->isZPositiveMove());
-        }
+			// Change direction if necessary and cache it
+			if (curd->dir & 1) {
+				Printer::setXDirection(1);
+				curd->stp[X_AXIS] = 1;
+				} else {
+				Printer::setXDirection(0);
+				curd->stp[X_AXIS] = -1;
+			}
+			if (curd->dir & 2) {
+				Printer::setYDirection(1);
+				curd->stp[Y_AXIS] = 1;
+				} else {
+				Printer::setYDirection(0);
+				curd->stp[Y_AXIS] = -1;
+			}
+			if (curd->dir & 4) {
+				Printer::setZDirection(1);
+				curd->stp[Z_AXIS] = 1;
+				} else {
+				Printer::setZDirection(0);
+				curd->stp[Z_AXIS] = -1;
+			}
+		}
 #if defined(USE_ADVANCE)
         if(!Printer::isAdvanceActivated()) // Set direction if no advance/OPS enabled
 #endif
@@ -1781,7 +1800,7 @@ long PrintLine::bresenhamStep() // Version for delta printer
                     {
                         cur->startXStep();
                         cur->error[X_AXIS] += curd_errupd;
-                        Printer::realDeltaPositionSteps[X_AXIS] += curd->isXPositiveMove() ? 1 : -1;
+                        Printer::realDeltaPositionSteps[X_AXIS] += curd->stp[X_AXIS];
 #ifdef DEBUG_STEPCOUNT
                         cur->totalStepsRemaining--;
 #endif
@@ -1794,7 +1813,7 @@ long PrintLine::bresenhamStep() // Version for delta printer
                     {
                         cur->startYStep();
                         cur->error[Y_AXIS] += curd_errupd;
-                        Printer::realDeltaPositionSteps[Y_AXIS] += curd->isYPositiveMove() ? 1 : -1;
+                        Printer::realDeltaPositionSteps[Y_AXIS] += curd->stp[Y_AXIS];
 #ifdef DEBUG_STEPCOUNT
                         cur->totalStepsRemaining--;
 #endif
@@ -1807,7 +1826,7 @@ long PrintLine::bresenhamStep() // Version for delta printer
                     {
                         cur->startZStep();
                         cur->error[Z_AXIS] += curd_errupd;
-                        Printer::realDeltaPositionSteps[Z_AXIS] += curd->isZPositiveMove() ? 1 : -1;
+                        Printer::realDeltaPositionSteps[Z_AXIS] += curd->stp[Z_AXIS];
 #ifdef DEBUG_STEPCOUNT
                         cur->totalStepsRemaining--;
 #endif
@@ -1829,11 +1848,29 @@ long PrintLine::bresenhamStep() // Version for delta printer
                         // generation so don't have to do this the first time.
                         stepsPerSegRemaining = cur->numPrimaryStepPerSegment;
 
-                        // Change direction if necessary
-                        Printer::setXDirection(curd->dir & 1);
-                        Printer::setYDirection(curd->dir & 2);
-                        Printer::setZDirection(curd->dir & 4);
-
+                        // Change direction if necessary and cache it
+						if (curd->dir & 1) {
+							Printer::setXDirection(1);
+							curd->stp[X_AXIS] = 1;
+						} else {
+							Printer::setXDirection(0);
+							curd->stp[X_AXIS] = -1;							
+						}
+						if (curd->dir & 2) {
+							Printer::setYDirection(1);
+							curd->stp[Y_AXIS] = 1;
+							} else {
+							Printer::setYDirection(0);
+							curd->stp[Y_AXIS] = -1;
+						}
+						if (curd->dir & 4) {
+							Printer::setZDirection(1);
+							curd->stp[Z_AXIS] = 1;
+							} else {
+							Printer::setZDirection(0);
+							curd->stp[Z_AXIS] = -1;
+						}
+                        
                         if(FEATURE_BABYSTEPPING && Printer::zBabystepsMissing && curd && (curd->dir & 112) == 112)
                         {
                             // execute a extra babystep

@@ -60,6 +60,7 @@ class PrintLine;
 typedef struct
 {
     flag8_t dir; 									///< Direction of delta movement.
+	int8_t stp[3];	// Cached value of direction sum.
     uint16_t deltaSteps[3];   				    ///< Number of steps in move.
     inline void checkEndstops(PrintLine *cur,bool checkall);
     inline void setXMoveFinished()
