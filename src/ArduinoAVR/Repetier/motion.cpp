@@ -361,47 +361,12 @@ void PrintLine::calculateMove(float axis_diff[],uint8_t pathOptimize)
     // if(p->vMax>46000)  // gets overflow in N computation
     //   p->vMax = 46000;
     //p->plateauN = (p->vMax*p->vMax/p->accelerationPrim)>>1;
-#ifdef USE_ADVANCE
-    if(!isXYZMove() || !isEMove())
-    {
-#ifdef ENABLE_QUADRATIC_ADVANCE
-        advanceRate = 0; // No head move or E move only or sucking filament back
-        advanceFull = 0;
-#endif
-        advanceL = 0;
-    }
-    else
-    {
-        float advlin = fabs(speedE)*Extruder::current->advanceL*0.001*Printer::axisStepsPerMM[E_AXIS];
-        advanceL = (uint16_t)((65536L*advlin)/vMax); //advanceLscaled = (65536*vE*k2)/vMax
-#ifdef ENABLE_QUADRATIC_ADVANCE;
-        advanceFull = 65536*Extruder::current->advanceK * speedE * speedE; // Steps*65536 at full speed
-        long steps = (HAL::U16SquaredToU32(vMax))/(accelerationPrim<<1); // v^2/(2*a) = steps needed to accelerate from 0-vMax
-        advanceRate = advanceFull/steps;
-        if((advanceFull>>16)>maxadv)
-        {
-            maxadv = (advanceFull>>16);
-            maxadvspeed = fabs(speedE);
-        }
-#endif
-        if(advlin>maxadv2)
-        {
-            maxadv2 = advlin;
-            maxadvspeed = fabs(speedE);
-        }
-    }
-#endif
     UI_MEDIUM; // do check encoder
     updateTrapezoids();
     // how much steps on primary axis do we need to reach target feedrate
     //p->plateauSteps = (long) (((float)p->acceleration *0.5f / slowest_axis_plateau_time_repro + p->vMin) *1.01f/slowest_axis_plateau_time_repro);
 #else
-#ifdef USE_ADVANCE
-#ifdef ENABLE_QUADRATIC_ADVANCE
-    advanceRate = 0; // No advance for constant speeds
-    advanceFull = 0;
-#endif
-#endif
+
 #endif
 
     // Correct integers for fixed point math used in bresenham_step
@@ -1758,17 +1723,7 @@ long PrintLine::bresenhamStep() // Version for delta printer
             {
                 if((cur->error[E_AXIS] -= cur->delta[E_AXIS]) < 0)
                 {
-#if defined(USE_ADVANCE)
-                    if(Printer::isAdvanceActivated())   // Use interrupt for movement
-                    {
-                        if(cur->isEPositiveMove())
-                            Printer::extruderStepsNeeded++;
-                        else
-                            Printer::extruderStepsNeeded--;
-                    }
-                    else
-#endif
-                        Extruder::step();
+					Extruder::step();
                     cur->error[E_AXIS] += cur_errupd;
                 }
             }
