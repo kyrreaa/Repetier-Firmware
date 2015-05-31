@@ -7,6 +7,7 @@
 #error Oops!  Make sure you have 'Arduino Mega 2560' selected from the 'Tools -> Boards' menu.
 #endif
 
+/*
 // FastIO stuff:
 #define DIO80_PIN		PINJ2
 #define DIO80_RPORT		PINJ
@@ -80,15 +81,17 @@
 #define DIO94_DDR		DDRD
 #define DIO94_PWM		NULL
 
+
+*/
+
 #define DIO87_PIN		PINJ3
 #define DIO87_RPORT		PINJ
 #define DIO87_WPORT		PORTJ
 #define DIO87_DDR		DDRJ
 #define DIO87_PWM		NULL
 
-
 // Pin defs
-#define ORIG_X_STEP_PIN     81  // PJ4
+#define ORIG_X_STEP_PIN     75  // PJ4
 #define ORIG_X_DIR_PIN      33  // PC4
 #define ORIG_X_MIN_PIN      -1  // PK2 (64)
 #define ORIG_X_MAX_PIN      65  // PK3
@@ -104,7 +107,7 @@
 //#define Y_MS1_PIN      69
 //#define Y_MS2_PIN      39
 
-#define ORIG_Z_STEP_PIN     80  // PJ2
+#define ORIG_Z_STEP_PIN     72  // PJ2
 #define ORIG_Z_DIR_PIN      35  // PC2
 #define ORIG_Z_MIN_PIN      -1  // PK6 (68)
 #define ORIG_Z_MAX_PIN      69  // PK7
