@@ -112,17 +112,14 @@
 //#define Z_MS1_PIN      68
 //#define Z_MS2_PIN      67
 
-#define HEATER_BED_PIN 46  // PL3
-#define TEMP_BED_PIN   0 
-
 #define HEATER_0_PIN   45  // PL4
 #define TEMP_0_PIN     1
 
-#define HEATER_1_PIN   44  // PL5
-#define TEMP_1_PIN     2
+#define HEATER_1_PIN 46  // PL3
+#define TEMP_1_PIN   0
 
-#define HEATER_2_PIN   -1
-#define TEMP_2_PIN     -1
+#define HEATER_2_PIN   44  // PL5
+#define TEMP_2_PIN     2
 
 #define ORIG_E0_STEP_PIN    14  // PJ1
 #define ORIG_E0_DIR_PIN     36  // PC1
