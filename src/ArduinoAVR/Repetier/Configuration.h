@@ -36,7 +36,7 @@
 
 */
 
-#define NUM_EXTRUDER 2
+#define NUM_EXTRUDER 3
 #define MOTHERBOARD 999
 #include "pins.h"
 
@@ -139,6 +139,41 @@
 #define EXT1_DECOUPLE_TEST_PERIOD 5000
 #define EXT1_JAM_PIN -1
 #define EXT1_JAM_PULLUP 0
+#define EXT2_X_OFFSET 560
+#define EXT2_Y_OFFSET 970
+#define EXT2_Z_OFFSET 0
+#define EXT2_STEPS_PER_MM 425
+#define EXT2_TEMPSENSOR_TYPE 60
+#define EXT2_TEMPSENSOR_PIN TEMP_3_PIN
+#define EXT2_HEATER_PIN HEATER_3_PIN
+#define EXT2_STEP_PIN ORIG_E2_STEP_PIN
+#define EXT2_DIR_PIN ORIG_E2_DIR_PIN
+#define EXT2_INVERSE 0
+#define EXT2_ENABLE_PIN E2_ENABLE_PIN
+#define EXT2_ENABLE_ON 0
+#define EXT2_MAX_FEEDRATE 60
+#define EXT2_MAX_START_FEEDRATE 20
+#define EXT2_MAX_ACCELERATION 2500
+#define EXT2_HEAT_MANAGER 1
+#define EXT2_WATCHPERIOD 1
+#define EXT2_PID_INTEGRAL_DRIVE_MAX 210
+#define EXT2_PID_INTEGRAL_DRIVE_MIN 0
+#define EXT2_PID_PGAIN_OR_DEAD_TIME 7.01
+#define EXT2_PID_I 0.2504
+#define EXT2_PID_D 9.7742
+#define EXT2_PID_MAX 210
+#define EXT2_ADVANCE_K 0
+#define EXT2_ADVANCE_L 0
+#define EXT2_ADVANCE_BACKLASH_STEPS 0
+#define EXT2_WAIT_RETRACT_TEMP 150
+#define EXT2_WAIT_RETRACT_UNITS 0
+#define EXT2_SELECT_COMMANDS ""
+#define EXT2_DESELECT_COMMANDS ""
+#define EXT2_EXTRUDER_COOLER_PIN -1
+#define EXT2_EXTRUDER_COOLER_SPEED 255
+#define EXT2_DECOUPLE_TEST_PERIOD 5000
+#define EXT2_JAM_PIN -1
+#define EXT2_JAM_PULLUP 0
 
 #define FEATURE_RETRACTION 0
 #define AUTORETRACT_ENABLED 0
@@ -585,6 +620,51 @@ Values must be in range 1..255
             "decoupleTestPeriod": 5,
             "jamPin": -1,
             "jamPullup": "0"
+        },
+        {
+            "id": 2,
+            "heatManager": 1,
+            "pidDriveMin": 0,
+            "pidDriveMax": 210,
+            "pidMax": 210,
+            "sensorType": 60,
+            "sensorPin": "TEMP_3_PIN",
+            "heaterPin": "HEATER_3_PIN",
+            "maxFeedrate": 60,
+            "startFeedrate": 20,
+            "invert": "0",
+            "invertEnable": "0",
+            "acceleration": 2500,
+            "watchPeriod": 1,
+            "pidP": 7.01,
+            "pidI": 0.2504,
+            "pidD": 9.7742,
+            "advanceK": 0,
+            "advanceL": 0,
+            "waitRetractTemp": 150,
+            "waitRetractUnits": 0,
+            "waitRetract": 0,
+            "stepsPerMM": 425,
+            "coolerPin": -1,
+            "coolerSpeed": 255,
+            "selectCommands": "",
+            "deselectCommands": "",
+            "xOffset": 4,
+            "yOffset": 6.9282,
+            "zOffset": 0,
+            "xOffsetSteps": 560,
+            "yOffsetSteps": 970,
+            "zOffsetSteps": 0,
+            "stepper": {
+                "name": "Extruder 2",
+                "step": "ORIG_E2_STEP_PIN",
+                "dir": "ORIG_E2_DIR_PIN",
+                "enable": "E2_ENABLE_PIN"
+            },
+            "advanceBacklashSteps": 0,
+            "decoupleTestPeriod": 5,
+            "jamPin": -1,
+            "jamPullup": "0"
         }
     ],
     "uiLanguage": 0,
@@ -996,7 +1076,7 @@ Values must be in range 1..255
     "hasUser0": false,
     "hasUser1": false,
     "hasUser2": false,
-    "numExtruder": 2,
+    "numExtruder": 3,
     "version": 92.3,
     "primaryPortName": ""
 }
