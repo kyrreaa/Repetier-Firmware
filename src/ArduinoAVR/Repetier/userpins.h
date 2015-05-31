@@ -110,8 +110,8 @@
 #define ORIG_Z_ENABLE_PIN   24  // PA2
 
 
-#define TEMP_1_PIN	0	// PF0 ADC0 Normally Extruder 0
-#define TEMP_0_PIN	3	// PF3 ADC3 Normally Heated bed
+#define TEMP_0_PIN	0	// PF0 ADC0 Normally Extruder 0
+#define TEMP_1_PIN	3	// PF3 ADC3 Normally Heated bed
 #define TEMP_2_PIN	1	// PF1 ADC1 Normally Extruder 1
 #define TEMP_3_PIN	2	// PF2 ADC2 Normally Extruder 2
 #define TEMP_4_PIN	8	// PK0 ADC8
