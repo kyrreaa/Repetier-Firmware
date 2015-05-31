@@ -143,7 +143,7 @@
 #define SDSS           53  // PB0
 #define LED_PIN        13  // PB7
 #define ORIG_FAN_PIN         6  // PH3 aka Servo 0
-#define PS_ON_PIN       7  // PH4 aka Servo 1
+#define ORIG_PS_ON_PIN       7  // PH4 aka Servo 1
 #define KILL_PIN       -1
 #define SUICIDE_PIN    -1  //PIN that has to be turned on right after start, to keep power flowing.
 
