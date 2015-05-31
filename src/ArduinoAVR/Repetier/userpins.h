@@ -93,48 +93,46 @@
 // Pin defs
 #define ORIG_X_STEP_PIN     75  // PJ4
 #define ORIG_X_DIR_PIN      33  // PC4
-#define ORIG_X_MIN_PIN      -1  // PK2 (64)
+#define ORIG_X_MIN_PIN      64  // PK2
 #define ORIG_X_MAX_PIN      65  // PK3
 #define ORIG_X_ENABLE_PIN   26  // PA4
-//#define X_MS1_PIN      -1
-//#define X_MS2_PIN      -1
 
 #define ORIG_Y_STEP_PIN     87  // PJ3
 #define ORIG_Y_DIR_PIN      34  // PC3
-#define ORIG_Y_MIN_PIN      -1  // PK4 (66)
+#define ORIG_Y_MIN_PIN      66  // PK4
 #define ORIG_Y_MAX_PIN      67  // PK5
 #define ORIG_Y_ENABLE_PIN   25  // PA3
-//#define Y_MS1_PIN      69
-//#define Y_MS2_PIN      39
 
 #define ORIG_Z_STEP_PIN     72  // PJ2
 #define ORIG_Z_DIR_PIN      35  // PC2
-#define ORIG_Z_MIN_PIN      -1  // PK6 (68)
+#define ORIG_Z_MIN_PIN      68  // PK6
 #define ORIG_Z_MAX_PIN      69  // PK7
 #define ORIG_Z_ENABLE_PIN   24  // PA2
-//#define Z_MS1_PIN      68
-//#define Z_MS2_PIN      67
 
-#define HEATER_0_PIN   45  // PL4
-#define TEMP_0_PIN     1
 
-#define HEATER_1_PIN 46  // PL3
-#define TEMP_1_PIN   0
+#define TEMP_1_PIN	0	// PF0 ADC0 Normally Extruder 0
+#define TEMP_0_PIN	3	// PF3 ADC3 Normally Heated bed
+#define TEMP_2_PIN	1	// PF1 ADC1 Normally Extruder 1
+#define TEMP_3_PIN	2	// PF2 ADC2 Normally Extruder 2
+#define TEMP_4_PIN	8	// PK0 ADC8
+#define TEMP_5_PIN	9	// PK1 ADC9
 
-#define HEATER_2_PIN   44  // PL5
-#define TEMP_2_PIN     2
+#define HEATER_0_PIN	45  // PL4
+#define HEATER_1_PIN	46  // PL3
+#define HEATER_2_PIN	44  // PL5
+#define HEATER_3_PIN	12  // PB4 Expanded, using external transistor on Encoder port, pin 2
 
 #define ORIG_E0_STEP_PIN    14  // PJ1
 #define ORIG_E0_DIR_PIN     36  // PC1
 #define ORIG_E0_ENABLE_PIN  23  // PA1
-//#define E0_MS1_PIN     65
-//#define E0_MS2_PIN     66
 
 #define ORIG_E1_STEP_PIN    15  // PJ0
 #define ORIG_E1_DIR_PIN     37  // PC0
 #define ORIG_E1_ENABLE_PIN  22  // PA0
-//#define E1_MS1_PIN     63
-//#define E1_MS2_PIN     64
+
+#define ORIG_E2_STEP_PIN    6	// PH3
+#define ORIG_E2_DIR_PIN     7	// PH4
+#define ORIG_E2_ENABLE_PIN	8	// PH5
 
 //#define DIGIPOTSS_PIN  38
 //#define DIGIPOT_CHANNELS {4,5,3,0,1} // X Y Z E0 E1 digipot channels to stepper driver mapping
@@ -149,11 +147,11 @@
 
 #define E0_PINS E0_STEP_PIN,E0_DIR_PIN,E0_ENABLE_PIN,
 #define E1_PINS E1_STEP_PIN,E1_DIR_PIN,E1_ENABLE_PIN,
+#define E2_PINS E2_STEP_PIN,E2_DIR_PIN,E2_ENABLE_PIN,
 
 #define SCK_PIN          52  // PB1
 #define MISO_PIN         50  // PB3
 #define MOSI_PIN         51  // PB2
-//#define MAX6675_SS       53
 
-#define PROBE_PIN  8  // PH5
-#define SERVO1_PIN  9  // PH6
+#define PROBE_PIN  9  // PH6
+//#define SERVO1_PIN  9  // PH6 (Needed for extra stepper)
