@@ -104,8 +104,8 @@
 #define EXT0_DECOUPLE_TEST_PERIOD 5000
 #define EXT0_JAM_PIN -1
 #define EXT0_JAM_PULLUP 0
-#define EXT1_X_OFFSET 560
-#define EXT1_Y_OFFSET 970
+#define EXT1_X_OFFSET 970
+#define EXT1_Y_OFFSET 560
 #define EXT1_Z_OFFSET 0
 #define EXT1_STEPS_PER_MM 425
 #define EXT1_TEMPSENSOR_TYPE 60
@@ -139,8 +139,8 @@
 #define EXT1_DECOUPLE_TEST_PERIOD 5000
 #define EXT1_JAM_PIN -1
 #define EXT1_JAM_PULLUP 0
-#define EXT2_X_OFFSET -560
-#define EXT2_Y_OFFSET 970
+#define EXT2_X_OFFSET -970
+#define EXT2_Y_OFFSET 560
 #define EXT2_Z_OFFSET 0
 #define EXT2_STEPS_PER_MM 425
 #define EXT2_TEMPSENSOR_TYPE 60
@@ -604,11 +604,11 @@ Values must be in range 1..255
             "coolerSpeed": 255,
             "selectCommands": "",
             "deselectCommands": "",
-            "xOffset": 4,
-            "yOffset": 6.9282,
+            "xOffset": 6.9282,
+            "yOffset": 4,
             "zOffset": 0,
-            "xOffsetSteps": 560,
-            "yOffsetSteps": 970,
+            "xOffsetSteps": 970,
+            "yOffsetSteps": 560,
             "zOffsetSteps": 0,
             "stepper": {
                 "name": "Extruder 1",
@@ -649,11 +649,11 @@ Values must be in range 1..255
             "coolerSpeed": 255,
             "selectCommands": "",
             "deselectCommands": "",
-            "xOffset": -4,
-            "yOffset": 6.9282,
+            "xOffset": -6.9282,
+            "yOffset": 4,
             "zOffset": 0,
-            "xOffsetSteps": -560,
-            "yOffsetSteps": 970,
+            "xOffsetSteps": -970,
+            "yOffsetSteps": 560,
             "zOffsetSteps": 0,
             "stepper": {
                 "name": "Extruder 2",
