@@ -69,8 +69,8 @@
 #define RETRACT_ON_PAUSE 4
 #define PAUSE_START_COMMANDS ""
 #define PAUSE_END_COMMANDS ""
-#define EXT0_X_OFFSET -560
-#define EXT0_Y_OFFSET 970
+#define EXT0_X_OFFSET 0
+#define EXT0_Y_OFFSET -1120
 #define EXT0_Z_OFFSET 0
 #define EXT0_STEPS_PER_MM 850
 #define EXT0_TEMPSENSOR_TYPE 60
@@ -104,8 +104,8 @@
 #define EXT0_DECOUPLE_TEST_PERIOD 5000
 #define EXT0_JAM_PIN -1
 #define EXT0_JAM_PULLUP 0
-#define EXT1_X_OFFSET 0
-#define EXT1_Y_OFFSET -1120
+#define EXT1_X_OFFSET 560
+#define EXT1_Y_OFFSET 970
 #define EXT1_Z_OFFSET 0
 #define EXT1_STEPS_PER_MM 425
 #define EXT1_TEMPSENSOR_TYPE 60
@@ -139,7 +139,7 @@
 #define EXT1_DECOUPLE_TEST_PERIOD 5000
 #define EXT1_JAM_PIN -1
 #define EXT1_JAM_PULLUP 0
-#define EXT2_X_OFFSET 560
+#define EXT2_X_OFFSET -560
 #define EXT2_Y_OFFSET 970
 #define EXT2_Z_OFFSET 0
 #define EXT2_STEPS_PER_MM 425
@@ -291,7 +291,7 @@
 #define Z_HOME_DIR 1
 #define X_MAX_LENGTH 200
 #define Y_MAX_LENGTH 200
-#define Z_MAX_LENGTH 399.2
+#define Z_MAX_LENGTH 360.3
 #define X_MIN_POS 0
 #define Y_MIN_POS 0
 #define Z_MIN_POS 0
@@ -559,11 +559,11 @@ Values must be in range 1..255
             "coolerSpeed": 255,
             "selectCommands": "",
             "deselectCommands": "",
-            "xOffset": -4,
-            "yOffset": 6.9282,
+            "xOffset": 0,
+            "yOffset": -8,
             "zOffset": 0,
-            "xOffsetSteps": -560,
-            "yOffsetSteps": 970,
+            "xOffsetSteps": 0,
+            "yOffsetSteps": -1120,
             "zOffsetSteps": 0,
             "stepper": {
                 "name": "Extruder 0",
@@ -604,11 +604,11 @@ Values must be in range 1..255
             "coolerSpeed": 255,
             "selectCommands": "",
             "deselectCommands": "",
-            "xOffset": 0,
-            "yOffset": -8,
+            "xOffset": 4,
+            "yOffset": 6.9282,
             "zOffset": 0,
-            "xOffsetSteps": 0,
-            "yOffsetSteps": -1120,
+            "xOffsetSteps": 560,
+            "yOffsetSteps": 970,
             "zOffsetSteps": 0,
             "stepper": {
                 "name": "Extruder 1",
@@ -649,10 +649,10 @@ Values must be in range 1..255
             "coolerSpeed": 255,
             "selectCommands": "",
             "deselectCommands": "",
-            "xOffset": 4,
+            "xOffset": -4,
             "yOffset": 6.9282,
             "zOffset": 0,
-            "xOffsetSteps": 560,
+            "xOffsetSteps": -560,
             "yOffsetSteps": 970,
             "zOffsetSteps": 0,
             "stepper": {
@@ -718,7 +718,7 @@ Values must be in range 1..255
     "zMinPos": 0,
     "xLength": 200,
     "yLength": 200,
-    "zLength": 399.2,
+    "zLength": 360.3,
     "alwaysCheckEndstops": "1",
     "disableX": "0",
     "disableY": "0",
