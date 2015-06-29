@@ -1557,6 +1557,9 @@ void Commands::processMCode(GCode *com)
     case 105: // M105  get temperature. Always returns the current temperature, doesn't wait until move stopped
         printTemperatures(com->hasX());
         break;
+    case 108: // M108  Print BedTemp only
+        Com::printFLN(Com::tDebug, Extruder::getHeatedBedTemperature());
+        break;
     case 109: // M109 - Wait for extruder heater to reach target.
 #if NUM_EXTRUDER > 0
     {
