@@ -74,7 +74,7 @@
 #define Z_PROBE_TEMPERATURE 0 // Temperature for type 2
 
 // 0 = Cartesian, 1 = CoreXYZ, 2 = delta, 3 = Dual X-Axis
-#define PRINTER_TYPE 1
+#define PRINTER_TYPE PRINTER_TYPE_CORE_XYZ
 // steps to include as babysteps per 1/BLOCK_FREQUENCY seconds. Must be lower then STEPPER_FREQUENCY/BLOCK_FREQUENCY and be low enough to not loose steps.
 #define BABYSTEPS_PER_BLOCK \
     { 1, 1, 1 }
