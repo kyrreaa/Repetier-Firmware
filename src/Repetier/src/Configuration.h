@@ -358,7 +358,7 @@ It also can add a delay to wait for spindle to run on full speed.
 #define ZHOME_MIN_TEMPERATURE 0
 #define ZHOME_HEAT_ALL 0
 // Height in mm after homing.
-#define ZHOME_HEIGHT 0 // 0 Disables move down to home. Maybe it assumes homing was done to z0?
+#define ZHOME_HEIGHT 340 // 0 Disables move down to home. Maybe it assumes homing was done to z0?
 // Home Z at a fixed xy position (1)
 #define FIXED_Z_HOME_POSITION 0
 #define ZHOME_X_POS 140
