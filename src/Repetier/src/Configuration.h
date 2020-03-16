@@ -77,7 +77,7 @@
 #define PRINTER_TYPE PRINTER_TYPE_CORE_XYZ
 // steps to include as babysteps per 1/BLOCK_FREQUENCY seconds. Must be lower then STEPPER_FREQUENCY/BLOCK_FREQUENCY and be low enough to not loose steps.
 #define BABYSTEPS_PER_BLOCK \
-    { 1, 1, 1 }
+    { 1, 1, 1 , 1, 1}
 // If all axis end stops are hardware based we can skip the time consuming tests each step
 #define NO_SOFTWARE_AXIS_ENDSTOPS
 // Normally only a delta has motor end stops required. Normally you trigger using axis endstops.
@@ -178,7 +178,7 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, &zProbeInput)
 #define A_HOME_DIR 0
 #define X_MAX_LENGTH 416
 #define Y_MAX_LENGTH 410
-#define Z_MAX_LENGTH 380
+#define Z_MAX_LENGTH 340
 #define A_MAX_LENGTH 500
 #define X_MIN_POS 0
 #define Y_MIN_POS 0
@@ -254,9 +254,9 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, &zProbeInput)
 #define FILAMENTCHANGE_X_POS 5
 #define FILAMENTCHANGE_Y_POS 5
 #define FILAMENTCHANGE_Z_ADD 2
-#define FILAMENTCHANGE_REHOME 1
-#define FILAMENTCHANGE_SHORTRETRACT 2.5
-#define FILAMENTCHANGE_LONGRETRACT 50
+#define FILAMENTCHANGE_REHOME 0
+#define FILAMENTCHANGE_SHORTRETRACT 0
+#define FILAMENTCHANGE_LONGRETRACT 0
 #define JAM_METHOD 1
 #define JAM_STEPS 220
 #define JAM_SLOWDOWN_STEPS 1000
@@ -265,15 +265,13 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, &zProbeInput)
 #define JAM_MIN_STEPS 10
 #define JAM_ACTION 1
 
-#define RETRACT_DURING_HEATUP true
+#define RETRACT_DURING_HEATUP false
 #define PID_CONTROL_RANGE 20
 #define SKIP_M109_IF_WITHIN 5
 #define SCALE_PID_TO_MAX 0
 #define TEMP_HYSTERESIS 0
-#define EXTRUDE_MAXLENGTH 160
+#define EXTRUDE_MAXLENGTH 200
 
-#define GENERIC_THERM_VREF 5
-#define GENERIC_THERM_NUM_ENTRIES 33
 #define HEATER_PWM_SPEED 0
 #define COOLER_PWM_SPEED 0
 
