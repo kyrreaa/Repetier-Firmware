@@ -119,12 +119,16 @@ ENDSTOP_SWITCH_HW(zProbeInput, IOZProbeInput, Z_AXIS, false)
 // Define fans
 
 IO_OUTPUT(IOFan1, ORIG_FAN_PIN)
+IO_OUTPUT(IOFan2, ORIG_FAN2_PIN)
 IO_PWM_SOFTWARE(Fan1NoKSPWM, IOFan1, 0)
+IO_PWM_SOFTWARE(Fan2NoKSPWM, IOFan2, 0)
 // IO_PWM_HARDWARE(Fan1PWM, 37,5000)
 // IO_PDM_SOFTWARE(Fan1NoKSPWM, IOFan1) // alternative to PWM signals
 IO_PWM_KICKSTART(Fan1PWM, Fan1NoKSPWM, 20, 40)
+IO_PWM_KICKSTART(Fan2PWM, Fan2NoKSPWM, 20, 40)
 // For debugging - reports new values and then calls real pwm
 IO_PWM_REPORT(Fan1Report, Fan1PWM)
+IO_PWM_REPORT(Fan2Report, Fan2PWM)
 
 // Define temperature sensors
 // Typically they require an analog input (12 bit) so define

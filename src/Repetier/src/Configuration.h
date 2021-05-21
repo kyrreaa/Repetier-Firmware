@@ -137,9 +137,9 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, &zProbeInput)
 
 // All fans in this list list become controllable with M106/M107
 // by selecteing the fan number with P0..P<NUM_FANS-1>
-#define NUM_FANS 1
+#define NUM_FANS 2
 #define FAN_LIST \
-    { &Fan1PWM }
+    { &Fan1PWM, &Fan2PWM }
 
 #define NUM_HEATED_BEDS 0
 #define HEATED_BED_LIST \
@@ -231,8 +231,8 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, &zProbeInput)
 // Uncomment the following line if you are using Arduino compatible firmware made for Arduino version earlier then 1.0
 // If it is incompatible you will get compiler errors about write functions not being compatible!
 //#define COMPAT_PRE1
-#define BLUETOOTH_SERIAL -1
-#define BLUETOOTH_BAUD 115200
+#define BLUETOOTH_SERIAL Serial1
+#define BLUETOOTH_BAUD 250000
 #define MIXING_EXTRUDER 0
 
 #define DRIVE_SYSTEM XYZ_GANTRY

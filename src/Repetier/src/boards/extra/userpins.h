@@ -75,10 +75,10 @@
 // 4,10,52 if using HW SPI.
 #define SDSS 4
 #define ORIG_SDCARDDETECT 14
-#define SDCARDDETECTINVERTED 1
+#define SDCARDDETECTINVERTED 0
 #define LED_PIN -1
-#define ORIG_FAN_PIN 11
-#define ORIG_FAN2_PIN -1
+#define ORIG_FAN_PIN 2
+#define ORIG_FAN2_PIN 12
 #define ORIG_PS_ON_PIN -1
 #define KILL_PIN -1
 #define SUICIDE_PIN -1 //PIN that has to be turned on right after start, to keep power flowing.
