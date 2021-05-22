@@ -73,6 +73,13 @@
 #define Z_PROBE_BORDER 2      // Safety border to ensure position is allowed
 #define Z_PROBE_TEMPERATURE 0 // Temperature for type 2
 
+//#define EXTERNALSERIAL  use Arduino serial library instead of build in. Requires more ram, has only 63 byte input buffer.
+// Uncomment the following line if you are using Arduino compatible firmware made for Arduino version earlier then 1.0
+// If it is incompatible you will get compiler errors about write functions not being compatible!
+//#define COMPAT_PRE1
+#define BLUETOOTH_SERIAL 1
+#define BLUETOOTH_BAUD 250000
+
 // 0 = Cartesian, 1 = CoreXYZ, 2 = delta, 3 = Dual X-Axis
 #define PRINTER_TYPE PRINTER_TYPE_CORE_XYZ
 // steps to include as babysteps per 1/BLOCK_FREQUENCY seconds. Must be lower then STEPPER_FREQUENCY/BLOCK_FREQUENCY and be low enough to not loose steps.
@@ -227,12 +234,6 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, &zProbeInput)
 #define FAN_THERMO_THERMISTOR_PIN -1
 #define FAN_THERMO_THERMISTOR_TYPE 1
 
-//#define EXTERNALSERIAL  use Arduino serial library instead of build in. Requires more ram, has only 63 byte input buffer.
-// Uncomment the following line if you are using Arduino compatible firmware made for Arduino version earlier then 1.0
-// If it is incompatible you will get compiler errors about write functions not being compatible!
-//#define COMPAT_PRE1
-#define BLUETOOTH_SERIAL Serial1
-#define BLUETOOTH_BAUD 250000
 #define MIXING_EXTRUDER 0
 
 #define DRIVE_SYSTEM XYZ_GANTRY
