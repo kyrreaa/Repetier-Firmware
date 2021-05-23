@@ -10,24 +10,142 @@
 
 HeatManager* heatedBeds[] = HEATED_BED_LIST;
 HeatManager* heatedChambers[] = HEATED_CHAMBER_LIST;
+#if CPU_ARCH == ARCH_AVR
+constexpr int numHeatedBeds = NUM_HEATED_BEDS;
+constexpr int numHeatedChambers = NUM_HEATED_CHAMBERS;
+#else
+constexpr int numHeatedBeds = std::extent<decltype(heatedBeds)>::value;
+static_assert(numHeatedBeds == NUM_HEATED_BEDS, "NUM_HEATED_BEDS not defined correctly");
+constexpr int numHeatedChambers = std::extent<decltype(heatedChambers)>::value;
+static_assert(numHeatedChambers == NUM_HEATED_CHAMBERS, "NUM_HEATED_CHAMBERS not defined correctly");
+#endif
 
 fast8_t Tool::activeToolId = 255;
 Tool* Tool::activeTool = nullptr;
-Tool* const Tool::tools[NUM_TOOLS] = TOOLS;
+Tool* const Tool::tools[] = TOOLS;
 
 ToolChangeCustomEvent::ToolChangeCustomEvent(Tool* tool) {
-    tool->setToolChangeHandler(this);
+    if (tool) {
+        tool->setToolChangeHandler(this);
+    }
 }
+
 void ToolChangeCustomEvent::M6(GCode* com, Tool* _tool) {
     EVENT_CUSTOM_TOOL_CHANGE_M6(com, _tool);
 }
+
 void ToolChangeCustomEvent::setup(Tool* _tool) {
     EVENT_CUSTOM_TOOL_CHANGE_SETUP(_tool);
 }
 
+void ToolChangeCustomEvent::activate(Tool* tool) {
+    EVENT_CUSTOM_TOOL_CHANGE_ACTIVATE(_tool);
+}
+
+void ToolChangeCustomEvent::deactivate(Tool* tool) {
+    EVENT_CUSTOM_TOOL_CHANGE_DEACTIVATE(_tool);
+}
+
+ToolChangeServo::ToolChangeServo(Tool* tool, ServoInterface* _servo, int16_t _defaultPosition, int32_t _timeout) {
+    servo = _servo;
+    position = _defaultPosition;
+    timeout = _timeout;
+    if (tool) {
+        tool->setToolChangeHandler(this);
+    }
+}
+
+void ToolChangeServo::M6(GCode* com, Tool* tool) {
+    servo->setPosition(position, timeout);
+    HAL::delayMilliseconds(timeout);
+}
+
+void ToolChangeServo::activate(Tool* tool) {
+    servo->setPosition(position, timeout);
+    HAL::delayMilliseconds(timeout);
+}
+
+int ToolChangeServo::eepromSize() {
+    return 2;
+}
+
+void ToolChangeServo::eepromHandle(int pos) {
+    EEPROM::handleInt(pos, PSTR("Servo position [us]"), position);
+}
+
+void ToolChangeServo::configMenu(GUIAction action) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+    GUI::menuLongP(action, PSTR("Servo Pos. :"), position, menuCHServoPosition, this, GUIPageType::FIXED_CONTENT);
+#endif
+}
+
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+void __attribute__((weak)) menuCHServoPosition(GUIAction action, void* data) {
+    ToolChangeServo* ext = reinterpret_cast<ToolChangeServo*>(data);
+    int32_t pos = ext->position;
+    DRAW_LONG_P(PSTR("Servo Pos.:"), Com::tUnitStepsPerMM, pos);
+    if (GUI::handleLongValueAction(action, v, 0, 2000, 1)) {
+        ext->position = v;
+    }
+}
+#endif
+
+ToolChangeMerge::ToolChangeMerge(Tool* tool, ToolChangeHandler* _t1, ToolChangeHandler* _t2) {
+    t1 = _t1;
+    t2 = _t2;
+    if (tool) {
+        tool->setToolChangeHandler(this);
+    }
+}
+
+void ToolChangeMerge::M6(GCode* com, Tool* tool) {
+    t1->M6(com, tool);
+    t2->M6(com, tool);
+}
+
+void ToolChangeMerge::activate(Tool* tool) {
+    t1->activate(tool);
+    t2->activate(tool);
+}
+
+void ToolChangeMerge::deactivate(Tool* tool) {
+    t1->deactivate(tool);
+    t2->deactivate(tool);
+}
+
+int ToolChangeMerge::eepromSize() {
+    return t1->eepromSize() + t2->eepromSize();
+}
+
+void ToolChangeMerge::eepromHandle(int pos) {
+    t1->eepromHandle(pos);
+    t2->eepromHandle(pos + t1->eepromSize());
+}
+
+void ToolChangeMerge::configMenu(GUIAction action) {
+    t1->configMenu(action);
+    t2->configMenu(action);
+}
+
+ToolChangeLink::ToolChangeLink(Tool* tool, ToolChangeHandler* _t) {
+    t = _t;
+    if (tool) {
+        tool->setToolChangeHandler(this);
+    }
+}
+void ToolChangeLink::M6(GCode* com, Tool* tool) {
+    t->M6(com, tool);
+}
+void ToolChangeLink::activate(Tool* tool) {
+    t->activate(tool);
+}
+void ToolChangeLink::deactivate(Tool* tool) {
+    t->deactivate(tool);
+}
+
 void __attribute__((weak)) menuToolOffsetXFine(GUIAction action, void* data) {
     Tool* ext = reinterpret_cast<Tool*>(data);
-    DRAW_FLOAT_P(PSTR("Offset X (0.01mm):"), Com::tUnitStepsPerMM, ext->getOffsetX(), 2);
+    DRAW_FLOAT_P(PSTR("Offset X (0.01mm):"), Com::tUnitMM, ext->getOffsetX(), 2);
     if (GUI::handleFloatValueAction(action, v, 0, 100000, 0.01)) {
         ext->setOffsetForAxis(X_AXIS, v);
         Tool::updateDerivedTools();
@@ -36,7 +154,7 @@ void __attribute__((weak)) menuToolOffsetXFine(GUIAction action, void* data) {
 
 void __attribute__((weak)) menuToolOffsetX(GUIAction action, void* data) {
     Tool* ext = reinterpret_cast<Tool*>(data);
-    DRAW_FLOAT_P(PSTR("Offset X (1mm):"), Com::tUnitStepsPerMM, ext->getOffsetX(), 2);
+    DRAW_FLOAT_P(PSTR("Offset X (1mm):"), Com::tUnitMM, ext->getOffsetX(), 2);
     if (action == GUIAction::CLICK) { // catch default action
         GUI::replace(menuToolOffsetXFine, data, GUIPageType::FIXED_CONTENT);
         return;
@@ -49,7 +167,7 @@ void __attribute__((weak)) menuToolOffsetX(GUIAction action, void* data) {
 
 void __attribute__((weak)) menuToolOffsetYFine(GUIAction action, void* data) {
     Tool* ext = reinterpret_cast<Tool*>(data);
-    DRAW_FLOAT_P(PSTR("Offset Y (0.01mm):"), Com::tUnitStepsPerMM, ext->getOffsetY(), 2);
+    DRAW_FLOAT_P(PSTR("Offset Y (0.01mm):"), Com::tUnitMM, ext->getOffsetY(), 2);
     if (GUI::handleFloatValueAction(action, v, 0, 100000, 0.01)) {
         ext->setOffsetForAxis(Y_AXIS, v);
         Tool::updateDerivedTools();
@@ -58,7 +176,7 @@ void __attribute__((weak)) menuToolOffsetYFine(GUIAction action, void* data) {
 
 void __attribute__((weak)) menuToolOffsetY(GUIAction action, void* data) {
     Tool* ext = reinterpret_cast<Tool*>(data);
-    DRAW_FLOAT_P(PSTR("Offset Y (1mm):"), Com::tUnitStepsPerMM, ext->getOffsetY(), 2);
+    DRAW_FLOAT_P(PSTR("Offset Y (1mm):"), Com::tUnitMM, ext->getOffsetY(), 2);
     if (action == GUIAction::CLICK) { // catch default action
         GUI::replace(menuToolOffsetYFine, data, GUIPageType::FIXED_CONTENT);
         return;
@@ -71,7 +189,7 @@ void __attribute__((weak)) menuToolOffsetY(GUIAction action, void* data) {
 
 void __attribute__((weak)) menuToolOffsetZFine(GUIAction action, void* data) {
     Tool* ext = reinterpret_cast<Tool*>(data);
-    DRAW_FLOAT_P(PSTR("Offset Z (0.01mm):"), Com::tUnitStepsPerMM, ext->getOffsetZ(), 2);
+    DRAW_FLOAT_P(PSTR("Offset Z (0.01mm):"), Com::tUnitMM, ext->getOffsetZ(), 2);
     if (GUI::handleFloatValueAction(action, v, 0, 100000, 0.01)) {
         ext->setOffsetForAxis(Z_AXIS, v);
         Tool::updateDerivedTools();
@@ -80,7 +198,7 @@ void __attribute__((weak)) menuToolOffsetZFine(GUIAction action, void* data) {
 
 void __attribute__((weak)) menuToolOffsetZ(GUIAction action, void* data) {
     Tool* ext = reinterpret_cast<Tool*>(data);
-    DRAW_FLOAT_P(PSTR("Offset Z (1mm):"), Com::tUnitStepsPerMM, ext->getOffsetZ(), 2);
+    DRAW_FLOAT_P(PSTR("Offset Z (1mm):"), Com::tUnitMM, ext->getOffsetZ(), 2);
     if (action == GUIAction::CLICK) { // catch default action
         GUI::replace(menuToolOffsetZFine, data, GUIPageType::FIXED_CONTENT);
         return;
@@ -91,10 +209,23 @@ void __attribute__((weak)) menuToolOffsetZ(GUIAction action, void* data) {
     }
 }
 
+void __attribute__((weak)) menuExtruderStepsPerMMFine(GUIAction action, void* data) {
+    ToolExtruder* ext = reinterpret_cast<ToolExtruder*>(data);
+    DRAW_FLOAT_P(PSTR("Resolution Fine:"), Com::tUnitStepsPerMM, ext->getResolution(), 2);
+    if (GUI::handleFloatValueAction(action, v, 0.0f, 100000.0f, 0.01f)) {
+        ext->setResolution(v);
+        Tool::updateDerivedTools();
+    }
+}
+
 void __attribute__((weak)) menuExtruderStepsPerMM(GUIAction action, void* data) {
     ToolExtruder* ext = reinterpret_cast<ToolExtruder*>(data);
-    DRAW_FLOAT_P(PSTR("Resolution:"), Com::tUnitStepsPerMM, ext->getResolution(), 2);
-    if (GUI::handleFloatValueAction(action, v, 0, 100000, 0.1)) {
+    DRAW_FLOAT_P(PSTR("Resolution Coarse:"), Com::tUnitStepsPerMM, ext->getResolution(), 2);
+    if (action == GUIAction::CLICK) { // catch default action
+        GUI::replace(menuExtruderStepsPerMMFine, data, GUIPageType::FIXED_CONTENT);
+        return;
+    }
+    if (GUI::handleFloatValueAction(action, v, 0.0f, 100000.0f, 1.0f)) {
         ext->setResolution(v);
         Tool::updateDerivedTools();
     }
@@ -120,7 +251,7 @@ void __attribute__((weak)) menuExtruderMaxAcceleration(GUIAction action, void* d
 
 void __attribute__((weak)) menuExtruderMaxYank(GUIAction action, void* data) {
     ToolExtruder* ext = reinterpret_cast<ToolExtruder*>(data);
-    DRAW_FLOAT_P(PSTR("Max. Jerk"), Com::tUnitMMPS, ext->getMaxYank(), 0);
+    DRAW_FLOAT_P(PSTR("Max. Jerk"), Com::tUnitMMPS, ext->getMaxYank(), 1);
     if (GUI::handleFloatValueAction(action, v, 0.1, 100, 0.1)) {
         ext->setMaxYank(v);
         Tool::updateDerivedTools();
@@ -149,6 +280,9 @@ void Tool::unselectTool() {
 
 void Tool::selectTool(fast8_t id, bool force) {
     bool doMove = activeToolId != 255;
+    if (Printer::isZProbingActive()) { // stop probing when selecting a tool
+        ZProbeHandler::deactivate();
+    }
     // Test for valid tool id
     if (id < 0 || id >= NUM_TOOLS || !PrinterType::canSelectTool(id)) {
         Com::printWarningF(PSTR("Illegal tool number selected:"));
@@ -169,7 +303,7 @@ void Tool::selectTool(fast8_t id, bool force) {
 #if RAISE_Z_ON_TOOLCHANGE > 0
     float lastZ = Motion1::currentPosition[Z_AXIS];
     if (doMove && Motion1::isAxisHomed(Z_AXIS)) {
-        Motion1::setTmpPositionXYZ(IGNORE_COORDINATE, IGNORE_COORDINATE, lastZ + RAISE_Z_ON_TOOLCHANGE);
+        Motion1::setTmpPositionXYZ(IGNORE_COORDINATE, IGNORE_COORDINATE, RMath::min(lastZ + RAISE_Z_ON_TOOLCHANGE, Motion1::maxPos[Z_AXIS]));
         Motion1::moveByOfficial(Motion1::tmpPosition, Motion1::moveFeedrate[Z_AXIS], false);
         Motion1::waitForEndOfMoves();
     }
@@ -223,6 +357,13 @@ void Tool::resetBase(float offX, float offY, float offZ) {
 } */
 
 void Tool::initTools() {
+#if CPU_ARCH == ARCH_AVR
+    constexpr int numTools = NUM_TOOLS;
+#else
+    constexpr int numTools = std::extent<decltype(Tool::tools)>::value;
+    static_assert(numTools == NUM_TOOLS, "NUM_TOOLS not defined correctly");
+#endif
+
     for (fast8_t i = 0; i < NUM_TOOLS; i++) {
         tools[i]->setToolId(i);
         tools[i]->init();
@@ -269,7 +410,7 @@ void Tool::waitForTemperatures() {
 
 void Tool::eepromHandleTools() {
     for (fast8_t i = 0; i < NUM_TOOLS; i++) {
-        EEPROM::handlePrefix(PSTR("Tool"), i + 1);
+        EEPROM::handlePrefix(PSTR("Tool "), i + 1);
         tools[i]->eepromHandle();
     }
     EEPROM::removePrefix();
@@ -281,8 +422,27 @@ void Tool::eepromHandle() {
 #endif
     EEPROM::handleFloat(eepromStart + 4, PSTR("Y Offset [mm]"), 3, offsetY);
     EEPROM::handleFloat(eepromStart + 8, PSTR("Z Offset [mm]"), 3, offsetZ);
+    int pos = eepromStart + 12;
+    if (changeHandler) {
+        changeHandler->eepromHandle(pos);
+        pos += changeHandler->eepromSize();
+    }
+    if (coolantHandler) {
+        coolantHandler->eepromHandle(pos);
+        // pos += coolantHandler->eepromSize();
+    }
 }
 
+int Tool::eepromSize() {
+    int size = 12;
+    if (changeHandler) {
+        size += changeHandler->eepromSize();
+    }
+    if (coolantHandler) {
+        size += coolantHandler->eepromSize();
+    }
+    return size;
+}
 void Tool::updateDerivedTools() {
     if (activeTool != nullptr) {
         activeTool->updateDerived();
@@ -336,5 +496,5 @@ void Tool::minMaxOffsetForAxis(fast8_t axis, float& min, float& max) {
 }
 
 #undef IO_TARGET
-#define IO_TARGET IO_TARGET_TOOLS_TEMPLATES
+#define IO_TARGET IO_TARGET_TEMPLATES
 #include "../io/redefine.h"

@@ -43,6 +43,8 @@ IO_TARGET with following meanings:
 21: Store recover data
 22: Restore recover data
 23: init late
+24: beeper loop
+25: servo inerrupt
 */
 
 // #pragma message(VAR_NAME_VALUE(IO_TARGET))
@@ -61,6 +63,7 @@ enum class GUIAction;
 #include "io_heatManager.h"
 #include "io_coolerManager.h"
 #include "io_tools.h"
+#include "io_beeper.h"
 #include "io_light.h"
 #include "../custom/customMacros.h"
 

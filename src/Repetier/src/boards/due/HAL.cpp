@@ -39,24 +39,14 @@ extern "C" char* sbrk(int i);
 
 // New adc handling
 bool analogEnabled[MAX_ANALOG_INPUTS] = { false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false };
-// end adc handling
-
-// #define NUM_ADC_SAMPLES 2 + (1 << ANALOG_INPUT_SAMPLE)
-/*
-#if ANALOG_INPUTS > 0
-int32_t osAnalogInputBuildup[ANALOG_INPUTS];
-int32_t osAnalogSamples[ANALOG_INPUTS][ANALOG_INPUT_MEDIAN];
-int32_t osAnalogSamplesSum[ANALOG_INPUTS];
-static int32_t adcSamplesMin[ANALOG_INPUTS];
-static int32_t adcSamplesMax[ANALOG_INPUTS];
-static int adcCounter = 0, adcSamplePos = 0;
-#endif
-*/
 
 static uint32_t adcEnable = 0;
 
 char HAL::virtualEeprom[EEPROM_BYTES] = { 0, 0, 0, 0, 0, 0, 0 };
 bool HAL::wdPinged = true;
+uint8_t HAL::i2cError = 0;
+BootReason HAL::startReason = BootReason::UNKNOWN;
+
 volatile uint8_t HAL::insideTimer1 = 0;
 #ifndef DUE_SOFTWARE_SPI
 int spiDueDividors[] = { 10, 21, 42, 84, 168, 255, 255 };
@@ -84,9 +74,10 @@ void HAL::setupTimer() {
     //NVIC_SetPriorityGrouping(4);
 
     // Timer for extruder control
+#if (DISABLED(MOTION2_USE_REALTIME_TIMER) || PREPARE_FREQUENCY > (PWM_CLOCK_FREQ / 2))
     pmc_enable_periph_clk(MOTION2_TIMER_IRQ); // enable power to timer
     //NVIC_SetPriority((IRQn_Type)EXTRUDER_TIMER_IRQ, NVIC_EncodePriority(4, 4, 1));
-    NVIC_SetPriority((IRQn_Type)MOTION2_TIMER_IRQ, 15);
+    NVIC_SetPriority((IRQn_Type)MOTION2_TIMER_IRQ, 2);
 
     // count up to value in RC register using given clock
     TC_Configure(MOTION2_TIMER, MOTION2_TIMER_CHANNEL, TC_CMR_WAVSEL_UP_RC | TC_CMR_WAVE | TC_CMR_TCCLKS_TIMER_CLOCK1);
@@ -101,11 +92,17 @@ void HAL::setupTimer() {
 
     // allow interrupts on timer
     NVIC_EnableIRQ((IRQn_Type)MOTION2_TIMER_IRQ);
+#else
+    RTT_SetPrescaler(RTT, (32768 / PREPARE_FREQUENCY) - 1);
+    RTT_EnableIT(RTT, RTT_MR_RTTINCIEN);
+    NVIC_SetPriority(RTT_IRQn, 2);
+    NVIC_EnableIRQ(RTT_IRQn);
+#endif
 
     // Regular interrupts for heater control etc
     pmc_enable_periph_clk(PWM_TIMER_IRQ);
     //NVIC_SetPriority((IRQn_Type)PWM_TIMER_IRQ, NVIC_EncodePriority(4, 6, 0));
-    NVIC_SetPriority((IRQn_Type)PWM_TIMER_IRQ, 15);
+    NVIC_SetPriority((IRQn_Type)PWM_TIMER_IRQ, 6);
 
     TC_FindMckDivisor(PWM_CLOCK_FREQ, F_CPU_TRUE, &tc_count, &tc_clock, F_CPU_TRUE);
     TC_Configure(PWM_TIMER, PWM_TIMER_CHANNEL, TC_CMR_WAVSEL_UP_RC | TC_CMR_WAVE | tc_clock);
@@ -135,10 +132,10 @@ void HAL::setupTimer() {
     NVIC_SetPriority(PIOC_IRQn, 1);
     NVIC_SetPriority(PIOD_IRQn, 1);
     // Servo control
-#if NUM_SERVOS > 0
+#if NUM_SERVOS > 0 || NUM_BEEPERS > 0
     pmc_enable_periph_clk(SERVO_TIMER_IRQ);
     //NVIC_SetPriority((IRQn_Type)SERVO_TIMER_IRQ, NVIC_EncodePriority(4, 5, 0));
-    NVIC_SetPriority((IRQn_Type)SERVO_TIMER_IRQ, 4);
+    NVIC_SetPriority((IRQn_Type)SERVO_TIMER_IRQ, 3);
 
     TC_Configure(SERVO_TIMER, SERVO_TIMER_CHANNEL, TC_CMR_WAVSEL_UP_RC | TC_CMR_WAVE | TC_CMR_TCCLKS_TIMER_CLOCK1);
 
@@ -149,6 +146,28 @@ void HAL::setupTimer() {
     SERVO_TIMER->TC_CHANNEL[SERVO_TIMER_CHANNEL].TC_IDR = ~TC_IER_CPCS;
     NVIC_EnableIRQ((IRQn_Type)SERVO_TIMER_IRQ);
 #endif
+#if NUM_BEEPERS > 0
+    for (int i = 0; i < NUM_BEEPERS; i++) {
+        if (beepers[i]->getOutputType() == 1) {
+            // If we have any SW beepers, enable the beeper IRQ
+            pmc_set_writeprotect(false);
+            pmc_enable_periph_clk((uint32_t)BEEPER_TIMER_IRQ);
+            NVIC_SetPriority((IRQn_Type)BEEPER_TIMER_IRQ, 1);
+
+            TC_Configure(BEEPER_TIMER, BEEPER_TIMER_CHANNEL, TC_CMR_WAVE | TC_CMR_WAVSEL_UP_RC | TC_CMR_TCCLKS_TIMER_CLOCK1);
+
+            BEEPER_TIMER->TC_CHANNEL[BEEPER_TIMER_CHANNEL].TC_IER = TC_IER_CPCS | TC_IER_CPAS;
+            BEEPER_TIMER->TC_CHANNEL[BEEPER_TIMER_CHANNEL].TC_IDR = ~TC_IER_CPCS & ~TC_IER_CPAS;
+            NVIC_EnableIRQ((IRQn_Type)BEEPER_TIMER_IRQ);
+            break;
+        }
+    }
+#endif
+}
+
+// Called within checkForPeriodicalActions (main loop, more or less)
+// as fast as possible
+void HAL::handlePeriodical() {
 }
 
 struct TimerPWMPin {
@@ -159,7 +178,8 @@ struct TimerPWMPin {
         , tc_global_chan(_tc_channel >> 1)
         , tc_local_chan((_tc_channel >> 1) % 3)
         , peripheral_A(_peripheral_A)
-        , tio_line_AB(_tc_channel & 1) {
+        , tio_line_AB(_tc_channel & 1)
+        , lastSetDuty(0) {
         switch (_tc_channel / 6) {
         case 1:
             tc_base_address = TC1;
@@ -175,11 +195,12 @@ struct TimerPWMPin {
     int pin;
     Pio* pio;
     uint32_t pio_pin;
-    byte tc_global_chan; // 0 .. 8 What's our overall timer channel number?
-    byte tc_local_chan;  // 0 .. 2 We're a timer channel inside a timer counter.
-    bool peripheral_A;   // Do we need to set the peripheral to A instead of B?
-    bool tio_line_AB;    // 0 = A, 1 = B Is this the TIOA or TIOB output pin?
-    Tc* tc_base_address; // TC0 .. TC2 timer counter registers
+    byte tc_global_chan;  // 0 .. 8 What's our overall timer channel number?
+    byte tc_local_chan;   // 0 .. 2 We're a timer channel inside a timer counter.
+    bool peripheral_A;    // Do we need to set the peripheral to A instead of B?
+    bool tio_line_AB;     // 0 = A, 1 = B Is this the TIOA or TIOB output pin?
+    Tc* tc_base_address;  // TC0 .. TC2 timer counter registers
+    ufast8_t lastSetDuty; // Last duty cycle we were set to. (for frequency changes).
 };
 
 // Each timer COUNTER has 3 timer channels.
@@ -277,6 +298,7 @@ struct PWMChannel {
     bool used;
     PWMPin* pwm; // table index
     uint32_t scale;
+    ufast8_t lastSetDuty;
 };
 
 static PWMChannel pwm_channel[8] = {
@@ -306,12 +328,39 @@ static void computePWMDivider(uint32_t frequency, uint32_t& div, uint32_t& scale
 
     if (scale > 65535) {
         scale = 65535;
-    } 
+    }
     if (div > 10) {
         div = 10;
-    }  
+    }
 }
 
+fast8_t HAL::initHardwareDAC(fast8_t dacPin) {
+    if (dacPin != DAC1 && dacPin != DAC0) {
+        return -1;
+    }
+    if (!DACC->DACC_CHSR) {
+        pmc_enable_periph_clk(ID_DACC);
+        DACC->DACC_CR = DACC_CR_SWRST;
+        DACC->DACC_MR = DACC_MR_REFRESH(1ul) | DACC_MR_STARTUP_8;
+    }
+    DACC->DACC_CHER = ((dacPin == DAC0) ? DACC_CHER_CH0 : DACC_CHER_CH1);
+    fast8_t id = (dacPin == DAC0) ? DACC_MR_USER_SEL_CHANNEL0 : DACC_MR_USER_SEL_CHANNEL1;
+    setHardwareDAC(id, 0ul);
+    return id;
+}
+
+void HAL::setHardwareDAC(fast8_t id, fast8_t value) {
+    if (id < 0) {
+        return;
+    }
+    if (value > 255) {
+        value = 255;
+    }
+    DACC->DACC_MR = (DACC->DACC_MR & (~DACC_MR_USER_SEL_Msk)) | id;
+    DACC->DACC_CDR = (static_cast<uint32_t>(value) * 4095ul) / 255ul;
+    while (!(DACC->DACC_ISR & DACC_ISR_EOC))
+        ;
+}
 // Try to initialize pinNumber as hardware PWM. Returns internal
 // id if it succeeds or -1 if it fails. Typical reasons to fail
 // are no pwm support for that pin or an other pin uses same PWM
@@ -342,6 +391,10 @@ int HAL::initHardwarePWM(int pinNumber, uint32_t frequency) {
     }
     if (foundPin == -1) {
         return -1;
+    }
+
+    if (!frequency) {
+        frequency = 1;
     }
 
     if (foundTimer) {
@@ -417,6 +470,7 @@ void HAL::setHardwarePWM(int id, int value) {
     if (id < 8) { // PWM channel 0..7
         PWMChannel& c = pwm_channel[id];
         uint32_t duty = (c.scale * value) / 255;
+        c.lastSetDuty = value;
         if ((PWM_INTERFACE->PWM_SR & (1 << id)) == 0) { // disabled, set value
             PWM_INTERFACE->PWM_CH_NUM[id].PWM_CDTY = duty;
         } else { // just update
@@ -433,6 +487,7 @@ void HAL::setHardwarePWM(int id, int value) {
     TimerPWMChannel& c = timer_channel[(id >> 1)];
     TimerPWMPin& t = *((id & 0x1) ? c.timer_B : c.timer_A);
 
+    t.lastSetDuty = value;
     if (!value) {
         t.tc_base_address->TC_CHANNEL[t.tc_local_chan].TC_CMR &= t.tio_line_AB ? ~TC_CMR_BCPC_SET : ~TC_CMR_ACPC_SET;
     } else {
@@ -446,6 +501,40 @@ void HAL::setHardwarePWM(int id, int value) {
             TC_SetRA(t.tc_base_address, t.tc_local_chan, ((freq * value) / 255));
         }
     }
+}
+
+void HAL::setHardwareFrequency(int id, uint32_t frequency) {
+    if (id < 0 || !frequency) {
+        return;
+    }
+    if (id < 8) {
+        PWMChannel& c = pwm_channel[id];
+        uint32_t divisor = 0;
+
+        computePWMDivider(frequency, divisor, c.scale);
+
+        if (divisor != (PWM_INTERFACE->PWM_CH_NUM[id].PWM_CMR & PWM_CMR_CPRE_Msk)) {
+            // Only reconfigure the channel if we've got to redo the prescaler.
+            PWMC_ConfigureChannelExt(PWM_INTERFACE, id, divisor, 0, c.pwm->invert ? 0 : (1 << 9), 0, 0, 0, 0);
+            PWMC_EnableChannel(PWM_INTERFACE, id);
+        }
+
+        PWMC_SetPeriod(PWM_INTERFACE, id, c.scale);
+        HAL::setHardwarePWM(id, c.lastSetDuty);
+        return;
+    }
+    id &= ~0x80;
+    if ((id >> 1) > 8) {
+        return;
+    }
+
+    TimerPWMChannel& c = timer_channel[(id >> 1)];
+    TimerPWMPin t = *((id & 0x1) ? c.timer_B : c.timer_A);
+
+    TC_Stop(t.tc_base_address, t.tc_local_chan);
+    TC_SetRC(t.tc_base_address, t.tc_local_chan, (F_CPU_TRUE / 2) / frequency);
+    HAL::setHardwarePWM(id | 0x80, t.lastSetDuty);
+    TC_Start(t.tc_base_address, t.tc_local_chan);
 }
 
 void HAL::analogEnable(int channel) {
@@ -520,69 +609,86 @@ void HAL::importEEPROM() {
 #if EEPROM_AVAILABLE == EEPROM_SDCARD
 
 #if !SDSUPPORT
-#error EEPROM using sd card requires SDCARSUPPORT
+#error EEPROM using sd card requires SDCARDSUPPORT
 #endif
 
-millis_t eprSyncTime = 0; // in sync
-SdFile eepromFile;
-void HAL::syncEEPROM() { // store to disk if changed
-    millis_t time = millis();
-
-    if (eprSyncTime && (time - eprSyncTime > 15000)) { // Buffer writes only every 15 seconds to pool writes
-        eprSyncTime = 0;
-        bool failed = false;
-        if (!sd.sdactive) { // not mounted
-            if (eepromFile.isOpen())
+millis_t eprSyncTime = 0ul; // in sync
+sd_file_t eepromFile;
+void HAL::syncEEPROM() {                                     // store to disk if changed
+    if (eprSyncTime && (millis() - eprSyncTime > 15000ul)) { // Buffer writes only every 15 seconds to pool writes
+        eprSyncTime = 0ul;
+        if (sd.state < SDState::SD_MOUNTED) { // not mounted
+            if (eepromFile.isOpen()) {
                 eepromFile.close();
-            Com::printErrorF("Could not write eeprom to sd card - no sd card mounted");
-            Com::println();
+            }
+            Com::printErrorFLN(PSTR("Could not write eeprom to sd card - no sd card mounted"));
             return;
         }
 
-        if (!eepromFile.seekSet(0))
-            failed = true;
-
-        if (!failed && eepromFile.write(virtualEeprom, EEPROM_BYTES) != EEPROM_BYTES)
-            failed = true;
-
-        if (failed) {
-            Com::printErrorF("Could not write eeprom to sd card");
-            Com::println();
+        if (!eepromFile.isOpen()
+            || eepromFile.write(virtualEeprom, EEPROM_BYTES) != EEPROM_BYTES
+            || !eepromFile.sync()) {
+            Com::printErrorFLN(PSTR("Could not write eeprom to sd card"));
+            sd.printIfCardErrCode();
+        } else {
+            eepromFile.rewind();
         }
     }
 }
 
 void HAL::importEEPROM() {
-    if (eepromFile.isOpen())
-        eepromFile.close();
-    if (!eepromFile.open("eeprom.bin", O_RDWR | O_CREAT | O_SYNC) || eepromFile.read(virtualEeprom, EEPROM_BYTES) != EEPROM_BYTES) {
-        Com::printFLN(Com::tOpenFailedFile, "eeprom.bin");
-    } else {
-        Com::printFLN("EEPROM read from sd card.");
+    int readBytes = 0;
+    if (!eepromFile.open("eeprom.bin", O_RDWR | O_CREAT | O_SYNC)
+        || ((readBytes = eepromFile.read(virtualEeprom, EEPROM_BYTES)) != EEPROM_BYTES
+            && readBytes)) { // Sometimes we have a 0 byte eeprom.bin
+        Com::printFLN(Com::tOpenFailedFile, PSTR("eeprom.bin"));
     }
     EEPROM::readDataFromEEPROM();
+    if (eprSyncTime) {
+        eprSyncTime = HAL::timeInMilliseconds() | 1UL; // Reset any sync timer
+    }
 }
 
 #endif
 
 // Print apparent cause of start/restart
 void HAL::showStartReason() {
+    if (startReason == BootReason::BROWNOUT) {
+        Com::printInfoFLN(Com::tBrownOut);
+    } else if (startReason == BootReason::WATCHDOG_RESET) {
+        Com::printInfoFLN(Com::tWatchdog);
+    } else if (startReason == BootReason::SOFTWARE_RESET) {
+        Com::printInfoFLN(PSTR("Software reset"));
+    } else if (startReason == BootReason::POWER_UP) {
+        Com::printInfoFLN(Com::tPowerUp);
+    } else if (startReason == BootReason::EXTERNAL_PIN) {
+        Com::printInfoFLN(PSTR("External reset pin reset"));
+    } else {
+        Com::printInfoFLN(PSTR("Unknown reset reason"));
+    }
+}
+
+void HAL::updateStartReason() {
     int mcu = (RSTC->RSTC_SR & RSTC_SR_RSTTYP_Msk) >> RSTC_SR_RSTTYP_Pos;
     switch (mcu) {
     case 0:
-        Com::printInfoFLN(Com::tPowerUp);
+        startReason = BootReason::POWER_UP;
         break;
     case 1:
         // this is return from backup mode on SAM
-        Com::printInfoFLN(Com::tBrownOut);
+        startReason = BootReason::BROWNOUT;
+        break;
     case 2:
-        Com::printInfoFLN(Com::tWatchdog);
+        startReason = BootReason::WATCHDOG_RESET;
         break;
     case 3:
-        Com::printInfoFLN(Com::tSoftwareReset);
+        startReason = BootReason::SOFTWARE_RESET;
         break;
     case 4:
-        Com::printInfoFLN(Com::tExternalReset);
+        startReason = BootReason::EXTERNAL_PIN;
+        break;
+    default:
+        startReason = BootReason::UNKNOWN;
     }
 }
 
@@ -835,12 +941,14 @@ void HAL::i2cInit(uint32_t clockSpeedHz) {
 /*************************************************************************
   Issues a start condition and sends address and transfer direction.
 *************************************************************************/
-void HAL::i2cStart(uint8_t address) {
+/* void HAL::i2cStart(uint8_t address) {
     WIRE_PORT.beginTransmission(address);
-}
+} */
 
 void HAL::i2cStartRead(uint8_t address, uint8_t bytes) {
-    WIRE_PORT.requestFrom(address, bytes);
+    if (!i2cError) {
+        i2cError |= (WIRE_PORT.requestFrom(address, bytes) != bytes);
+    }
 }
 /*************************************************************************
  Issues a start condition and sends address and transfer direction.
@@ -849,12 +957,14 @@ void HAL::i2cStartRead(uint8_t address, uint8_t bytes) {
  Input:   address and transfer direction of I2C device, internal address
 *************************************************************************/
 void HAL::i2cStartAddr(uint8_t address, unsigned int pos, uint8_t readBytes) {
-    WIRE_PORT.beginTransmission(address);
-    WIRE_PORT.write(pos >> 8);
-    WIRE_PORT.write(pos & 255);
-    if (readBytes != 0) {
-        WIRE_PORT.endTransmission();
-        WIRE_PORT.requestFrom(address, readBytes);
+    if (!i2cError) {
+        WIRE_PORT.beginTransmission(address);
+        WIRE_PORT.write(pos >> 8);
+        WIRE_PORT.write(pos & 255);
+        if (readBytes) {
+            i2cError |= WIRE_PORT.endTransmission();
+            i2cError |= (WIRE_PORT.requestFrom(address, readBytes) != readBytes);
+        }
     }
 }
 
@@ -862,7 +972,7 @@ void HAL::i2cStartAddr(uint8_t address, unsigned int pos, uint8_t readBytes) {
  Terminates the data transfer and releases the I2C bus
 *************************************************************************/
 void HAL::i2cStop(void) {
-    WIRE_PORT.endTransmission();
+    i2cError |= WIRE_PORT.endTransmission();
 }
 
 /*************************************************************************
@@ -871,7 +981,9 @@ void HAL::i2cStop(void) {
   Input:    byte to be transfered
 *************************************************************************/
 void HAL::i2cWrite(uint8_t data) {
-    WIRE_PORT.write(data);
+    if (!i2cError) {
+        WIRE_PORT.write(data);
+    }
 }
 
 /*************************************************************************
@@ -879,13 +991,13 @@ void HAL::i2cWrite(uint8_t data) {
  Return:  byte read from I2C device
 *************************************************************************/
 int HAL::i2cRead(void) {
-    if (WIRE_PORT.available()) {
+    if (!i2cError && WIRE_PORT.available()) {
         return WIRE_PORT.read();
     }
     return -1; // should never happen, but better then blocking
 }
 
-#if NUM_SERVOS > 0
+#if NUM_SERVOS > 0 || NUM_BEEPERS > 0
 unsigned int HAL::servoTimings[4] = { 0, 0, 0, 0 };
 unsigned int servoAutoOff[4] = { 0, 0, 0, 0 };
 static uint8_t servoIndex = 0;
@@ -900,11 +1012,10 @@ void HAL::servoMicroseconds(uint8_t servo, int microsec, uint16_t autoOff) {
 ServoInterface* analogServoSlots[4] = { nullptr, nullptr, nullptr, nullptr };
 // Servo timer Interrupt handler
 void SERVO_TIMER_VECTOR() {
-    static uint32_t interval;
-
     // apparently have to read status register
-    TC_GetStatus(SERVO_TIMER, SERVO_TIMER_CHANNEL);
-
+    SERVO_TIMER->TC_CHANNEL[SERVO_TIMER_CHANNEL].TC_SR;
+#if NUM_SERVOS > 0 || NUM_BEEPERS > 0
+    static uint32_t interval = 0;
     fast8_t servoId = servoIndex >> 1;
     ServoInterface* act = analogServoSlots[servoId];
     if (act == nullptr) {
@@ -916,8 +1027,9 @@ void SERVO_TIMER_VECTOR() {
                      SERVO5000US - interval);
             if (servoAutoOff[servoId]) {
                 servoAutoOff[servoId]--;
-                if (servoAutoOff[servoId] == 0)
+                if (servoAutoOff[servoId] == 0) {
                     HAL::servoTimings[servoId] = 0;
+                }
             }
         } else { // enable
             InterruptProtectedBlock noInt;
@@ -935,6 +1047,11 @@ void SERVO_TIMER_VECTOR() {
     if (servoIndex > 7) {
         servoIndex = 0;
     }
+#endif
+// Add all generated servo interrupt handlers
+#undef IO_TARGET
+#define IO_TARGET IO_TARGET_SERVO_INTERRUPT
+#include "io/redefine.h"
 }
 #endif
 
@@ -976,7 +1093,7 @@ void PWM_TIMER_VECTOR() {
 #endif
     //InterruptProtectedBlock noInt;
     // apparently have to read status register
-    TC_GetStatus(PWM_TIMER, PWM_TIMER_CHANNEL);
+    PWM_TIMER->TC_CHANNEL[PWM_TIMER_CHANNEL].TC_SR;
 
     static uint8_t pwm_count0 = 0; // Used my IO_PWM_SOFTWARE!
     static uint8_t pwm_count1 = 0;
@@ -995,43 +1112,13 @@ void PWM_TIMER_VECTOR() {
         executePeriodical = 1;
     }
     // read analog values
-    //#if ANALOG_INPUTS > 0
     // conversion finished?
     if ((ADC->ADC_ISR & adcEnable) == adcEnable) {
 #undef IO_TARGET
 #define IO_TARGET IO_TARGET_ANALOG_INPUT_LOOP
 #include "io/redefine.h"
-        /*if (executePeriodical) {
-            Com::printFLN("bed:",IOAnalogBed0.value);
-        }*/
-        /*adcCounter++;
-        for (int i = 0; i < ANALOG_INPUTS; i++) {
-            int32_t cur = ADC->ADC_CDR[osAnalogInputChannels[i]];
-            osAnalogInputBuildup[i] += cur;
-            adcSamplesMin[i] = RMath::min(adcSamplesMin[i], cur);
-            adcSamplesMax[i] = RMath::max(adcSamplesMax[i], cur);
-            if (adcCounter >= NUM_ADC_SAMPLES) {   // store new conversion result
-                // Strip biggest and smallest value and round correctly
-                osAnalogInputBuildup[i] = osAnalogInputBuildup[i] + (1 << (ANALOG_INPUT_SAMPLE - 1)) - (adcSamplesMin[i] + adcSamplesMax[i]);
-                adcSamplesMin[i] = 100000;
-                adcSamplesMax[i] = 0;
-                osAnalogSamplesSum[i] -= osAnalogSamples[i][adcSamplePos];
-                osAnalogSamplesSum[i] += (osAnalogSamples[i][adcSamplePos] = osAnalogInputBuildup[i] >> ANALOG_INPUT_SAMPLE);
-                if(executePeriodical == 0 || i >= NUM_ANALOG_TEMP_SENSORS) {
-                    osAnalogInputValues[i] = osAnalogSamplesSum[i] / ANALOG_INPUT_MEDIAN;
-                }
-                osAnalogInputBuildup[i] = 0;
-            } // adcCounter >= NUM_ADC_SAMPLES
-        } // for i
-        if (adcCounter >= NUM_ADC_SAMPLES) {
-            adcCounter = 0;
-            adcSamplePos++;
-            if (adcSamplePos >= ANALOG_INPUT_MEDIAN)
-                adcSamplePos = 0;
-        }*/
         ADC->ADC_CR = ADC_CR_START; // reread values
     }
-    // #endif // ANALOG_INPUTS > 0
     pwm_count0++;
     pwm_count1 += 2;
     pwm_count2 += 4;
@@ -1044,11 +1131,20 @@ void PWM_TIMER_VECTOR() {
         HAL::wdPinged = false;
     }
 #endif
+
+#if (ENABLED(MOTION2_USE_REALTIME_TIMER) && PREPARE_FREQUENCY <= (PWM_CLOCK_FREQ / 2))
+    // Asynchronously reenable the RTT in here.
+    // otherwise we'd need a busy loop to wait the 40us needed, or something.
+    if (!(RTT->RTT_SR) && !(RTT->RTT_MR & RTT_MR_RTTINCIEN)) {
+        RTT->RTT_MR |= RTT_MR_RTTINCIEN;
+    }
+#endif
 #if DEBUG_TIMING
     WRITE(DEBUG_ISR_TEMP_PIN, 0);
 #endif
 }
 
+#if (DISABLED(MOTION2_USE_REALTIME_TIMER) || PREPARE_FREQUENCY > (PWM_CLOCK_FREQ / 2))
 TcChannel* motion2Channel = (MOTION2_TIMER->TC_CHANNEL + MOTION2_TIMER_CHANNEL);
 
 // MOTION2_TIMER IRQ handler
@@ -1056,30 +1152,116 @@ void MOTION2_TIMER_VECTOR() {
 #if DEBUG_TIMING
     WRITE(DEBUG_ISR_MOTION_PIN, 1);
 #endif
-    static bool inside = false; // prevent double call when not finished
-    motion2Channel->TC_SR;      // faster replacement for above line!
-    if (inside) {
-        return;
-    }
-    inside = true;
+    motion2Channel->TC_SR; // faster replacement for above line!
     Motion2::timer();
-    inside = false;
 #if DEBUG_TIMING
     WRITE(DEBUG_ISR_MOTION_PIN, 0);
 #endif
 }
-
-// IRQ handler for tone generator
-#if defined(BEEPER_PIN) && BEEPER_PIN > -1
-void BEEPER_TIMER_VECTOR() {
-    static bool toggle;
-
-    TC_GetStatus(BEEPER_TIMER, BEEPER_TIMER_CHANNEL);
-
-    WRITE(BEEPER_PIN, toggle);
-    toggle = !toggle;
+#else
+extern "C" void RTT_Handler() {
+#if DEBUG_TIMING
+    WRITE(DEBUG_ISR_MOTION_PIN, 1);
+#endif
+    // It's possible for the RTT interrupt to actually preempt itself
+    // unless you disable it and reenable it once the status is clear.
+    // It takes two slow clock cycles (32.768kHz so 40-50us~) to clear.
+    RTT->RTT_SR;
+    RTT->RTT_MR &= ~RTT_MR_RTTINCIEN;
+    Motion2::timer();
+#if DEBUG_TIMING
+    WRITE(DEBUG_ISR_MOTION_PIN, 0);
+#endif
 }
 #endif
+
+#if NUM_BEEPERS > 0
+// IRQ handler for tone generator
+void BEEPER_TIMER_VECTOR() {
+    // always need to feed the beeper loop a bool "beeperIRQPhase"
+    // beeper turns ON at at max counter timer hit. Turns OFF at RA compare
+    // (our timer's "duty" counter)
+
+    bool beeperIRQPhase = false;
+    if ((BEEPER_TIMER->TC_CHANNEL[BEEPER_TIMER_CHANNEL].TC_SR) & TC_SR_CPCS) {
+        beeperIRQPhase = true;
+    }
+#undef IO_TARGET
+#define IO_TARGET IO_TARGET_BEEPER_LOOP
+#include "io/redefine.h"
+    (void)beeperIRQPhase; // avoid gcc unused warning
+}
+#endif
+
+void HAL::tone(uint32_t frequency) {
+#if NUM_BEEPERS > 0
+#if NUM_BEEPERS > 1
+    ufast8_t curPlaying = 0;
+    BeeperSourceBase* playingBeepers[NUM_BEEPERS];
+    // Reduce freq to nearest 100hz, otherwise we can get some insane freq multiples (from eg primes).
+    // also clamp max freq.
+    constexpr ufast8_t reduce = 100;
+    constexpr uint32_t maxFreq = 100000;
+    uint32_t multiFreq = frequency - (frequency % reduce);
+    for (size_t i = 0; i < (NUM_BEEPERS + curPlaying); i++) {
+        uint16_t beeperCurFreq = 0;
+        if (i >= NUM_BEEPERS) {
+            if (multiFreq > maxFreq) {
+                multiFreq = maxFreq;
+            }
+            beeperCurFreq = playingBeepers[i - NUM_BEEPERS]->getCurFreq();
+            beeperCurFreq -= (beeperCurFreq % reduce);
+            playingBeepers[i - NUM_BEEPERS]->setFreqDiv(curPlaying > 1 ? constrain((multiFreq / beeperCurFreq) - 1, 0, 1000) : 0);
+        } else {
+            if (beepers[i]->getOutputType() == 1 && beepers[i]->isPlaying()) {
+                beeperCurFreq = beepers[i]->getCurFreq();
+                beeperCurFreq -= (beeperCurFreq % reduce);
+                if (!multiFreq) {
+                    multiFreq = beeperCurFreq;
+                }
+                multiFreq = RMath::LCM(multiFreq, beeperCurFreq);
+                playingBeepers[curPlaying++] = beepers[i];
+            }
+        }
+    }
+    frequency = multiFreq;
+#endif
+    if (frequency < 1) {
+        return;
+    }
+    if (!(TC_GetStatus(BEEPER_TIMER, BEEPER_TIMER_CHANNEL) & TC_SR_CLKSTA)) {
+        TC_Start(BEEPER_TIMER, BEEPER_TIMER_CHANNEL);
+    }
+    // 100% volume is 50% duty
+    float percent = (static_cast<float>(Printer::toneVolume) * 50.0f) * 0.0001f;
+    uint32_t rc = (F_CPU_TRUE / 2) / frequency;
+    uint32_t ra = static_cast<uint32_t>(static_cast<float>(rc) * percent);
+    TC_SetRC(BEEPER_TIMER, BEEPER_TIMER_CHANNEL, rc);
+    TC_SetRA(BEEPER_TIMER, BEEPER_TIMER_CHANNEL, ra);
+    if (TC_ReadCV(BEEPER_TIMER, BEEPER_TIMER_CHANNEL) > rc) {
+        BEEPER_TIMER->TC_CHANNEL[BEEPER_TIMER_CHANNEL].TC_CCR = TC_CCR_SWTRG;
+    }
+#endif
+}
+
+void HAL::noTone() {
+#if NUM_BEEPERS > 0
+#if NUM_BEEPERS > 1
+    // If any IO beeper is still playing, we can't stop the timer yet.
+    for (size_t i = 0; i < NUM_BEEPERS; i++) {
+        if (beepers[i]->getOutputType() == 1 && beepers[i]->isPlaying()) {
+            constexpr uint32_t maxFreq = (F_CPU_TRUE / 2) / 100000;
+            // if we're nearing/at our freq limit, refresh the divisors
+            if (maxFreq == BEEPER_TIMER->TC_CHANNEL[BEEPER_TIMER_CHANNEL].TC_RC) {
+                HAL::tone(0);
+            }
+            return;
+        }
+    }
+#endif
+    TC_Stop(BEEPER_TIMER, BEEPER_TIMER_CHANNEL);
+#endif
+}
 
 void HAL::spiInit() {
     SPI.begin();

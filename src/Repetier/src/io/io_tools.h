@@ -22,6 +22,9 @@
 #undef JAM_DETECTOR_HW
 #undef FILAMENT_DETECTOR
 #undef TOOL_CHANGE_CUSTOM_EVENT
+#undef TOOL_CHANGE_SERVO
+#undef TOOL_CHANGE_MERGE
+#undef TOOL_CHANGE_LINK
 
 #if IO_TARGET == IO_TARGET_CLASS_DEFINITION // declare variable
 
@@ -54,10 +57,21 @@
 #define TOOL_CHANGE_CUSTOM_EVENT(name, tool) \
     extern ToolChangeCustomEvent name;
 
+#define TOOL_CHANGE_SERVO(name, tool, servo, pos, timeout) \
+    extern ToolChangeServo name;
+
+#define TOOL_CHANGE_MERGE(name, tool, toolCHanger1, toolCHanger2) \
+    extern ToolChangeMerge name;
+
+#define TOOL_CHANGE_LINK(name, tool, toolCHanger) \
+    extern ToolChangeLink name;
+
 #elif IO_TARGET == IO_TARGET_DEFINE_VARIABLES // define variables
 
 #define TOOL_EXTRUDER(name, offx, offy, offz, heater, stepper, diameter, resolution, yank, maxSpeed, acceleration, advance, startScript, endScript, fan) \
-    ToolExtruder name(offx, offy, offz, &heater, &stepper, diameter, resolution, yank, maxSpeed, acceleration, advance, PSTR(startScript), PSTR(endScript), fan); \
+    FSTRINGVALUE(name##_startScript, startScript); \
+    FSTRINGVALUE(name##_endScript, endScript); \
+    ToolExtruder name(offx, offy, offz, &heater, &stepper, diameter, resolution, yank, maxSpeed, acceleration, advance, name##_startScript, name##_endScript, fan); \
     void __attribute__((weak)) menuControl##name(GUIAction action, void* data) { \
         GUI::menuStart(action); \
         char help[MAX_COLS]; \
@@ -83,10 +97,10 @@
         GUI::flashToStringLong(help, PSTR("= Extruder @ ="), name.getToolId() + 1); \
         GUI::menuText(action, help, true); \
         GUI::menuBack(action); \
-        if (stepper.overridesResolution()) { \
+        if (stepper.overridesResolution() || stepper.hasConfigMenu()) { \
             stepper.menuConfig(action, data); \
         } else { \
-            GUI::menuFloatP(action, PSTR("Resolution:"), name.getResolution(), 2, menuExtruderStepsPerMM, &name, GUIPageType::FIXED_CONTENT); \
+            GUI::menuFloatP(action, PSTR("Resolution :"), name.getResolution(), 2, menuExtruderStepsPerMM, &name, GUIPageType::FIXED_CONTENT); \
         } \
         GUI::menuFloatP(action, PSTR("Max Speed  :"), name.getMaxSpeed(), 0, menuExtruderMaxSpeed, &name, GUIPageType::FIXED_CONTENT); \
         GUI::menuFloatP(action, PSTR("Max Accel. :"), name.getAcceleration(), 0, menuExtruderMaxAcceleration, &name, GUIPageType::FIXED_CONTENT); \
@@ -95,6 +109,12 @@
         GUI::menuFloatP(action, PSTR("Offset X   :"), name.getOffsetX(), 2, menuToolOffsetX, &name, GUIPageType::FIXED_CONTENT); \
         GUI::menuFloatP(action, PSTR("Offset Y   :"), name.getOffsetY(), 2, menuToolOffsetY, &name, GUIPageType::FIXED_CONTENT); \
         GUI::menuFloatP(action, PSTR("Offset Z   :"), name.getOffsetZ(), 2, menuToolOffsetZ, &name, GUIPageType::FIXED_CONTENT); \
+        if (name.changeHandler) { \
+            name.changeHandler->configMenu(action); \
+        } \
+        if (name.coolantHandler) { \
+            name.coolantHandler->configMenu(action); \
+        } \
         name.getHeater()->showConfigMenu(action); \
         GUI::menuEnd(action); \
     }
@@ -130,6 +150,12 @@
         GUI::menuFloatP(action, PSTR("Offset X    :"), name.getOffsetX(), 2, menuToolOffsetX, &name, GUIPageType::FIXED_CONTENT); \
         GUI::menuFloatP(action, PSTR("Offset Y    :"), name.getOffsetY(), 2, menuToolOffsetY, &name, GUIPageType::FIXED_CONTENT); \
         GUI::menuFloatP(action, PSTR("Offset Z    :"), name.getOffsetZ(), 2, menuToolOffsetZ, &name, GUIPageType::FIXED_CONTENT); \
+        if (name.changeHandler) { \
+            name.changeHandler->configMenu(action); \
+        } \
+        if (name.coolantHandler) { \
+            name.coolantHandler->configMenu(action); \
+        } \
         GUI::menuEnd(action); \
     }
 
@@ -162,6 +188,12 @@
         GUI::menuFloatP(action, PSTR("Offset X :"), name.getOffsetX(), 2, menuToolOffsetX, &name, GUIPageType::FIXED_CONTENT); \
         GUI::menuFloatP(action, PSTR("Offset Y :"), name.getOffsetY(), 2, menuToolOffsetY, &name, GUIPageType::FIXED_CONTENT); \
         GUI::menuFloatP(action, PSTR("Offset Z :"), name.getOffsetZ(), 2, menuToolOffsetZ, &name, GUIPageType::FIXED_CONTENT); \
+        if (name.changeHandler) { \
+            name.changeHandler->configMenu(action); \
+        } \
+        if (name.coolantHandler) { \
+            name.coolantHandler->configMenu(action); \
+        } \
         GUI::menuEnd(action); \
     }
 
@@ -186,6 +218,15 @@
 #define TOOL_CHANGE_CUSTOM_EVENT(name, tool) \
     ToolChangeCustomEvent name(static_cast<Tool*>(&tool));
 
+#define TOOL_CHANGE_SERVO(name, tool, servo, pos, timeout) \
+    ToolChangeServo name(static_cast<Tool*>(&tool), &servo, pos, timeout);
+
+#define TOOL_CHANGE_MERGE(name, tool, toolChanger1, toolChanger2) \
+    ToolChangeMerge name(static_cast<Tool*>(&tool), static_cast<Tool*>(&toolChanger), static_cast<Tool*>(&toolCHanger2));
+
+#define TOOL_CHANGE_LINK(name, tool, toolChanger) \
+    ToolChangeLink name(static_cast<Tool*>(&tool), static_cast<ToolChangeHandler*>(&toolChanger));
+
 #elif IO_TARGET == IO_TARGET_RESTORE_FROM_CONFIG // reset configs
 
 #define TOOL_EXTRUDER(name, offx, offy, offz, heater, stepper, diameter, resolution, yank, maxSpeed, acceleration, advance, startScript, endScrip, fan) \
@@ -197,7 +238,7 @@
 #define JAM_DETECTOR_HW(name, observer, inputPin, tool, distanceSteps, jitterSteps, jamPercentage) \
     name.reset(distanceSteps, jitterSteps, jamPercentage);
 
-#elif IO_TARGET == IO_TARGET_TOOLS_TEMPLATES // template definitions in tools.cpp
+#elif IO_TARGET == IO_TARGET_TEMPLATES // template definitions in tools.cpp
 
 #define TOOL_EXTRUDER(name, offx, offy, offz, heater, stepper, diameter, resolution, yank, maxSpeed, acceleration, advance, startScript, endScrip, fan)
 #define TOOL_LASER(name, offx, offy, offz, output, toolPin, enablePin, milliWatt, warmupUS, warmupPWM, bias, gamma, startScript, endScript) \
@@ -305,4 +346,13 @@
 #endif
 #ifndef TOOL_CHANGE_CUSTOM_EVENT
 #define TOOL_CHANGE_CUSTOM_EVENT(name, tool)
+#endif
+#ifndef TOOL_CHANGE_SERVO
+#define TOOL_CHANGE_SERVO(name, tool, servo, pos, timeout)
+#endif
+#ifndef TOOL_CHANGE_MERGE
+#define TOOL_CHANGE_MERGE(name, tool, toolChanger1, toolChanger2)
+#endif
+#ifndef TOOL_CHANGE_LINK
+#define TOOL_CHANGE_LINK(name, tool, toolChanger)
 #endif

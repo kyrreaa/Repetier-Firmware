@@ -23,10 +23,14 @@
 float PrinterType::bedRectangle[2][2];
 uint16_t PrinterType::eprStart;
 
-void PrinterType::homeAxis(fast8_t axis) {
-    Motion1::simpleHome(axis);
+bool PrinterType::homeAxis(fast8_t axis) {
+    return Motion1::simpleHome(axis);
 }
 
+/** Check if given position pos is an allowed position. Coordinate system here
+ * is the transformed coordinates. In addition zOfficial is the z position in 
+ * official coordinates.
+ */
 bool PrinterType::positionAllowed(float pos[NUM_AXES], float zOfficial) {
     if (Printer::isNoDestinationCheck()) {
         return true;
@@ -35,13 +39,13 @@ bool PrinterType::positionAllowed(float pos[NUM_AXES], float zOfficial) {
         return true;
     }
     // Extra contrain to protect Z conditionbased on official coordinate system
-    if (zOfficial < Motion1::minPos[Z_AXIS] || zOfficial > Motion1::maxPos[Z_AXIS]) {
+    if (zOfficial < Motion1::minPos[Z_AXIS] - 0.01 || zOfficial > Motion1::maxPos[Z_AXIS] + 0.01) {
         return false;
     }
     for (fast8_t i = 0; i < Z_AXIS; i++) {
         if (Motion1::axesHomed & axisBits[i]) {
-            if (pos[i] < Motion1::minPos[i]
-                || pos[i] > Motion1::maxPos[i]) {
+            if (pos[i] < Motion1::minPosOff[i]
+                || pos[i] > Motion1::maxPosOff[i]) {
                 return false;
             }
         }
@@ -50,14 +54,16 @@ bool PrinterType::positionAllowed(float pos[NUM_AXES], float zOfficial) {
 }
 
 void PrinterType::closestAllowedPositionWithNewXYOffset(float pos[NUM_AXES], float offX, float offY, float safety) {
+    // offX and offY are with sign as stored in tool not when assigned later!
+    // pos is in official coordinate system
     float offsets[3] = { offX, offY, 0 };
     float tOffMin, tOffMax;
     for (fast8_t i = 0; i <= Z_AXIS; i++) {
         Tool::minMaxOffsetForAxis(i, tOffMin, tOffMax);
 
         float p = pos[i] - offsets[i];
-        float minP = Motion1::minPos[i] + safety + tOffMax - tOffMin;
-        float maxP = Motion1::maxPos[i] - Motion1::rotMax[i] - safety + tOffMax - tOffMin;
+        float minP = Motion1::minPos[i] + safety - tOffMax;
+        float maxP = Motion1::maxPos[i] - safety - tOffMin;
         if (p < minP) {
             pos[i] += minP - p;
         } else if (p > maxP) {
@@ -125,14 +131,14 @@ float PrinterType::feedrateForMoveSteps(fast8_t axes) {
     float feedrate = 100.0f;
     FOR_ALL_AXES(i) {
         if (axes & axisBits[i]) {
-            feedrate = RMath::min(feedrate, Motion1::maxFeedrate[i]);
+            feedrate = RMath::min(feedrate, Motion1::homingFeedrate[i]);
         }
     }
     return feedrate;
 }
 
-void PrinterType::deactivatedTool(fast8_t id) {}
-void PrinterType::activatedTool(fast8_t id) {}
+void PrinterType::deactivatedTool(fast8_t id) { }
+void PrinterType::activatedTool(fast8_t id) { }
 void PrinterType::eepromHandle() {
     EEPROM::handlePrefix(PSTR("Printer"));
     EEPROM::handleFloat(eprStart + 0, PSTR("Bed X Min [mm]"), 2, bedRectangle[X_AXIS][0]);
@@ -151,13 +157,11 @@ void PrinterType::init() {
     restoreFromConfiguration();
     eprStart = EEPROM::reserve(EEPROM_SIGNATURE_CARTESIAN, 1, 4 * 4);
 }
-void PrinterType::updateDerived() {}
+void PrinterType::updateDerived() { }
 void PrinterType::enableMotors(fast8_t axes) {
     FOR_ALL_AXES(i) {
         if ((axes & axisBits[i]) != 0 && Motion1::motors[i]) {
-            if (Motion1::motors[i]) {
-                Motion1::motors[i]->enable();
-            }
+            Motion1::motors[i]->enable();
         }
     }
     if ((axes & axisBits[E_AXIS]) != 0 && Motion1::dittoMode) {
@@ -174,6 +178,7 @@ void PrinterType::setDittoMode(fast8_t count, bool mirror) {
 }
 
 void PrinterType::transformedToOfficial(float trans[NUM_AXES], float official[NUM_AXES]) {
+#ifdef OFFSETS_IN_TRANSFORMED_COS
     Motion1::transformFromPrinter(
         trans[X_AXIS],
         trans[Y_AXIS],
@@ -184,18 +189,39 @@ void PrinterType::transformedToOfficial(float trans[NUM_AXES], float official[NU
     official[X_AXIS] -= Motion1::toolOffset[X_AXIS]; // Offset from active extruder or z probe
     official[Y_AXIS] -= Motion1::toolOffset[Y_AXIS];
     official[Z_AXIS] -= Motion1::toolOffset[Z_AXIS];
+#else
+    Motion1::transformFromPrinter(
+        trans[X_AXIS] - Motion1::toolOffset[X_AXIS],
+        trans[Y_AXIS] - Motion1::toolOffset[Y_AXIS],
+        trans[Z_AXIS] - Motion1::toolOffset[Z_AXIS],
+        official[X_AXIS],
+        official[Y_AXIS],
+        official[Z_AXIS]);
+#endif
     for (fast8_t i = E_AXIS; i < NUM_AXES; i++) {
         official[i] = trans[i];
     }
 }
 
 void PrinterType::officialToTransformed(float official[NUM_AXES], float trans[NUM_AXES]) {
+#ifdef OFFSETS_IN_TRANSFORMED_COS
     Motion1::transformToPrinter(official[X_AXIS] + Motion1::toolOffset[X_AXIS],
                                 official[Y_AXIS] + Motion1::toolOffset[Y_AXIS],
                                 official[Z_AXIS] + Motion1::toolOffset[Z_AXIS],
                                 trans[X_AXIS],
                                 trans[Y_AXIS],
                                 trans[Z_AXIS]);
+#else
+    Motion1::transformToPrinter(official[X_AXIS],
+                                official[Y_AXIS],
+                                official[Z_AXIS],
+                                trans[X_AXIS],
+                                trans[Y_AXIS],
+                                trans[Z_AXIS]);
+    trans[X_AXIS] += Motion1::toolOffset[X_AXIS];
+    trans[Y_AXIS] += Motion1::toolOffset[Y_AXIS];
+    trans[Z_AXIS] += Motion1::toolOffset[Z_AXIS];
+#endif
     for (fast8_t i = E_AXIS; i < NUM_AXES; i++) {
         trans[i] = official[i];
     }
@@ -206,7 +232,6 @@ bool PrinterType::canSelectTool(fast8_t toolId) {
 }
 
 void PrinterType::M290(GCode* com) {
-    HAL::delayMilliseconds(20);
     InterruptProtectedBlock lock;
     if (com->hasX()) {
         float x = constrain(com->X, -2, 2);
@@ -218,8 +243,27 @@ void PrinterType::M290(GCode* com) {
     }
     if (com->hasZ()) {
         float z = constrain(com->Z, -2, 2);
+        Motion1::totalBabystepZ += z;
         Motion2::openBabysteps[Z_AXIS] += z * Motion1::resolution[Z_AXIS];
     }
+    lock.unprotect();
+    Com::printFLN(PSTR("BabystepZ:"), Motion1::totalBabystepZ, 4);
+}
+
+bool PrinterType::runMCode(GCode* com) {
+    switch (com->M) {
+    case 290:
+        M290(com);
+        return false;
+    case 360:
+        M360();
+        return false;
+    }
+    return true;
+}
+
+bool PrinterType::runGCode(GCode* com) {
+    return false;
 }
 
 PGM_P PrinterType::getGeometryName() {

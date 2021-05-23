@@ -287,7 +287,11 @@ void initializeLCD() {
     // according to datasheet, we need at least 40ms after power rises above 2.7V
     // before sending commands. Arduino can turn on way before 4.5V.
     // is this delay long enough for all cases??
-    HAL::delayMilliseconds(235);
+
+    if (GUI::curBootState != GUIBootState::DISPLAY_INIT) {
+        return;
+    }
+
     SET_OUTPUT(UI_DISPLAY_D4_PIN);
     SET_OUTPUT(UI_DISPLAY_D5_PIN);
     SET_OUTPUT(UI_DISPLAY_D6_PIN);
@@ -461,7 +465,7 @@ uint32_t nextRune(char** ptr) {
     }
     unsigned char p2 = **ptr;
     (*ptr)++;
-    if ((p1 && 240) == 240) { // 4 byte value
+    if ((p1 & 240) == 240) { // 4 byte value
         unsigned char p3 = **ptr;
         (*ptr)++;
         unsigned char p4 = **ptr;
@@ -485,7 +489,7 @@ int32_t nextRuneSize(char** ptr, size_t& sz) {
     }
     unsigned char p2 = **ptr;
     (*ptr)++;
-    if ((p1 && 240) == 240) { // 4 byte value
+    if ((p1 & 240) == 240) { // 4 byte value
         unsigned char p3 = **ptr;
         (*ptr)++;
         unsigned char p4 = **ptr;
@@ -633,6 +637,51 @@ void printRow(uint8_t r, char* txt) {
 #endif
 }
 
+static fast8_t textScrollPos = 0;
+static fast8_t textScrollWaits = 0;
+static bool textScrollDir = false;
+
+// moved inside scrollSelectedText to reduce ram usage
+// static char scrollBuf[sizeof(GUI::buf) + 1] = { 0 };
+static void scrollSelectedText(int* row) {
+    fast8_t lastCharPos = GUI::bufPos;
+    if (lastCharPos > UI_COLS) {
+        char scrollBuf[sizeof(GUI::buf) + 1];
+        if (!GUI::textIsScrolling) {
+            // Wait a few refresh ticks before starting scroll.
+            textScrollWaits = 2;
+            GUI::textIsScrolling = true;
+        }
+        if (textScrollWaits <= 0) {
+            // Intentionally go one character over to show we're done.
+            fast8_t maxScrollX = constrain(((lastCharPos + 1) - UI_COLS), 0, static_cast<fast8_t>(sizeof(scrollBuf) - 1));
+            constexpr fast8_t scrollIncr = 1;
+            if (!textScrollDir) {
+                if ((textScrollPos += scrollIncr) >= maxScrollX) {
+                    textScrollDir = true; // Left scroll
+                    textScrollPos = maxScrollX;
+                    textScrollWaits = 2;
+                }
+            } else {
+                if ((textScrollPos -= scrollIncr) <= 0) {
+                    textScrollDir = false; // Right scroll back
+                    textScrollPos = 0;
+                    textScrollWaits = 1;
+                }
+            }
+        } else {
+            textScrollWaits--;
+        }
+        memmove(&scrollBuf[0], &GUI::buf[textScrollPos], sizeof(scrollBuf) - 1);
+        if (GUI::buf[0] == '>') {
+            scrollBuf[0] = '>';
+        }
+        printRow((*row)++, scrollBuf);
+    } else {
+        printRow((*row)++, GUI::buf);
+    }
+}
+
 void printRowCentered(uint8_t r, char* text) {
     unsigned int len = utf8Length(text);
     unsigned int extraSpaces = 0;
@@ -666,7 +715,23 @@ void printRowCentered(uint8_t r, char* text) {
 #endif
 }
 
-void GUI::init() {
+millis_t init100msTicks = 0;
+void GUI::driverInit() {
+    // Function called immediately at bootup
+    init100msTicks = 0;
+}
+void GUI::processInit() {
+    // Function called every 100ms (from GUI::update())
+    // If our bootstate is still initalizing
+
+    // A 200-300ms delay from inital power up -> to
+    // sending commands seems to be safe for these little
+    // character displays, otherwise you might get gibberish/
+    // glitched characters etc.
+    if (++init100msTicks < 3 || curBootState != GUIBootState::DISPLAY_INIT) { // 300 ms
+        return;
+    }
+
     initializeLCD();
     handleKeypress();
     nextAction = GUIAction::NONE;
@@ -687,6 +752,7 @@ void GUI::init() {
     bufAddStringP(Com::tVendor);
     printRow(3, buf);
     lastRefresh = HAL::timeInMilliseconds() + UI_START_SCREEN_DELAY; // Show start screen 4s but will not delay start process
+    curBootState = GUIBootState::IN_INTRO;                           // Switch to a skippable boot animation state
 }
 
 static fast8_t refresh_counter = 0;
@@ -709,6 +775,13 @@ static int guiY;
 static int guiSelIndex;
 
 void GUI::menuStart(GUIAction action) {
+    if (npActionFound) {
+        if (GUI::textIsScrolling) {
+            GUI::textIsScrolling = false;
+            textScrollDir = false;
+            textScrollPos = textScrollWaits = 0;
+        }
+    }
     npActionFound = false;
     guiLine = 0;
     guiSelIndex = cursorRow[level];
@@ -718,7 +791,10 @@ void GUI::menuStart(GUIAction action) {
     }
 }
 
-void GUI::menuEnd(GUIAction action) {
+void GUI::menuEnd(GUIAction action, bool scrollbar, bool affectedBySpeed) {
+    if (affectedBySpeed) {
+        GUI::menuAffectBySpeed(action);
+    }
     if (action == GUIAction::NEXT) {
         if (cursorRow[level] - topRow[level] >= UI_ROWS) {
             topRow[level] = cursorRow[level] + 1 - UI_ROWS;
@@ -734,13 +810,20 @@ void GUI::menuEnd(GUIAction action) {
         if (cursorRow[level] < 0) {
             cursorRow[level] = 0;
         }
+    } else if (action == GUIAction::DRAW) {
+        if (guiLine < UI_ROWS) {
+            bufClear();
+            const int count = (UI_ROWS - guiLine);
+            for (int i = 0; i < count; i++) {
+                printRow(guiLine++, buf);
+            }
+        }
     }
 }
 
 #define TEST_MENU_CLICK \
     if (guiLine == cursorRow[level]) { /* Actions for active line only!*/ \
         if (action == GUIAction::CLICK) { \
-            GUI::nextAction = GUIAction::CLICK_PROCESSED; \
             if (tp == GUIPageType::POP) { /* Leave menu */ \
                 pop(); \
             } else if (cb != nullptr && tp == GUIPageType::ACTION) { /* Execute a direct action */ \
@@ -748,6 +831,7 @@ void GUI::menuEnd(GUIAction action) {
             } else if (cb) { /* Push new display function on stack */ \
                 push(cb, cData, tp); \
             } \
+            action = GUIAction::CLICK_PROCESSED; \
         } \
     }
 
@@ -758,7 +842,11 @@ void GUI::menuTextP(GUIAction& action, PGM_P text, bool highlight) {
         if (guiLine >= topRow[level] && guiLine < topRow[level] + UI_ROWS) {
             bufClear();
             bufAddStringP(text);
-            printRow(guiY++, buf);
+            if (guiLine == cursorRow[level]) {
+                scrollSelectedText(&guiY);
+            } else {
+                printRow(guiY++, buf);
+            }
         }
     } else if (action == GUIAction::NEXT) {
         if (!highlight && !npActionFound && guiLine > cursorRow[level]) {
@@ -803,8 +891,9 @@ void GUI::menuFloatP(GUIAction& action, PGM_P text, float val, int precision, Gu
             npActionFound = true;
             contentChanged = true;
         }
-    } else
+    } else {
         TEST_MENU_CLICK
+    }
     guiLine++;
 }
 
@@ -835,8 +924,9 @@ void GUI::menuLongP(GUIAction& action, PGM_P text, long val, GuiCallback cb, voi
             npActionFound = true;
             contentChanged = true;
         }
-    } else
+    } else {
         TEST_MENU_CLICK
+    }
     guiLine++;
 }
 
@@ -871,8 +961,9 @@ void GUI::menuOnOffP(GUIAction& action, PGM_P text, bool val, GuiCallback cb, vo
             npActionFound = true;
             contentChanged = true;
         }
-    } else
+    } else {
         TEST_MENU_CLICK
+    }
     guiLine++;
 }
 
@@ -892,7 +983,11 @@ void GUI::menuSelectableP(GUIAction& action, PGM_P text, GuiCallback cb, void* c
                 bufAddChar(' ');
             }
             GUI::bufAddStringP(text);
-            printRow(guiY++, buf);
+            if (guiLine == cursorRow[level]) {
+                scrollSelectedText(&guiY);
+            } else {
+                printRow(guiY++, buf);
+            }
         }
     } else if (action == GUIAction::NEXT) {
         if (!npActionFound && guiLine > cursorRow[level]) {
@@ -906,8 +1001,9 @@ void GUI::menuSelectableP(GUIAction& action, PGM_P text, GuiCallback cb, void* c
             npActionFound = true;
             contentChanged = true;
         }
-    } else
+    } else {
         TEST_MENU_CLICK
+    }
     guiLine++;
 }
 
@@ -917,16 +1013,12 @@ void GUI::menuText(GUIAction& action, char* text, bool highlight) {
     } else if (action == GUIAction::DRAW) {
         if (guiLine >= topRow[level] && guiLine < topRow[level] + UI_ROWS) {
             bufClear();
-            if (highlight) {
-                // bufAddChar('*');
-                // bufAddChar(' ');
-                bufAddString(text);
-                // bufAddChar(' ');
-                // bufAddChar('*');
+            bufAddString(text);
+            if (guiLine == cursorRow[level]) {
+                scrollSelectedText(&guiY);
             } else {
-                bufAddString(text);
+                printRow(guiY++, buf);
             }
-            printRow(guiY++, buf);
         }
     } else if (action == GUIAction::NEXT) {
         if (!highlight && !npActionFound && guiLine > cursorRow[level]) {
@@ -971,8 +1063,9 @@ void GUI::menuFloat(GUIAction& action, char* text, float val, int precision, Gui
             npActionFound = true;
             contentChanged = true;
         }
-    } else
+    } else {
         TEST_MENU_CLICK
+    }
     guiLine++;
 }
 
@@ -1003,8 +1096,9 @@ void GUI::menuLong(GUIAction& action, char* text, long val, GuiCallback cb, void
             npActionFound = true;
             contentChanged = true;
         }
-    } else
+    } else {
         TEST_MENU_CLICK
+    }
     guiLine++;
 }
 
@@ -1039,8 +1133,9 @@ void GUI::menuOnOff(GUIAction& action, char* text, bool val, GuiCallback cb, voi
             npActionFound = true;
             contentChanged = true;
         }
-    } else
+    } else {
         TEST_MENU_CLICK
+    }
     guiLine++;
 }
 
@@ -1060,7 +1155,11 @@ void GUI::menuSelectable(GUIAction& action, char* text, GuiCallback cb, void* cD
                 bufAddChar(' ');
             }
             GUI::bufAddString(text);
-            printRow(guiY++, buf);
+            if (guiLine == cursorRow[level]) {
+                scrollSelectedText(&guiY);
+            } else {
+                printRow(guiY++, buf);
+            }
         }
     } else if (action == GUIAction::NEXT) {
         if (!npActionFound && guiLine > cursorRow[level]) {
@@ -1074,8 +1173,9 @@ void GUI::menuSelectable(GUIAction& action, char* text, GuiCallback cb, void* cD
             npActionFound = true;
             contentChanged = true;
         }
-    } else
+    } else {
         TEST_MENU_CLICK
+    }
     guiLine++;
 }
 
@@ -1113,6 +1213,12 @@ void GUI::showValue(char* text, PGM_P unit, char* value) {
     printRowCentered(3, GUI::buf);
 }
 
+// No scrollbars for the 20x4's
+void GUI::resetScrollbarTimer() { }
+void GUI::showScrollbar(GUIAction& action) {
+}
+void GUI::showScrollbar(GUIAction& action, float percent, uint16_t min, uint16_t max) {
+}
 //extern void __attribute__((weak)) startScreen(GUIAction action, void* data);
 //extern void __attribute__((weak)) printProgress(GUIAction action, void* data);
 // extern void __attribute__((weak)) mainMenu(GUIAction action, void* data);
@@ -1142,20 +1248,53 @@ void __attribute__((weak)) startScreen(GUIAction action, void* data) {
         } else if (tool->getToolType() == ToolTypes::MILL) {
         }
         GUI::bufAddStringP(PSTR(" Z:"));
-        if (Motion1::getShowPosition(Z_AXIS) < 1000) {
-            GUI::bufAddFloat(Motion1::getShowPosition(Z_AXIS), 3, 2);
+        if (Motion1::isAxisHomed(Z_AXIS)) {
+            if (Motion1::getShowPosition(Z_AXIS) < 1000) {
+                GUI::bufAddFloat(Motion1::getShowPosition(Z_AXIS), 3, 2);
+            } else {
+                GUI::bufAddFloat(Motion1::getShowPosition(Z_AXIS), 4, 1);
+            }
         } else {
-            GUI::bufAddFloat(Motion1::getShowPosition(Z_AXIS), 4, 1);
+            if (refresh_counter & 1) {
+                GUI::bufAddChar('?');
+                GUI::bufAddChar('?');
+                GUI::bufAddChar('?');
+                GUI::bufAddChar('.');
+                GUI::bufAddChar('?');
+            }
         }
         printRow(0, GUI::buf);
 
         GUI::bufClear();
-#if NUM_HEATED_BEDS == 1
-        GUI::bufAddChar('B');
+
+#if NUM_HEATED_BEDS > 0 || NUM_HEATED_CHAMBERS > 0
+        static fast8_t auxHeaterIndex = 0;
+        if (auxHeaterIndex < NUM_HEATED_BEDS) {
+            GUI::bufAddChar('B');
+            if (NUM_HEATED_BEDS > 1) {
+                GUI::bufAddInt(heatedBeds[auxHeaterIndex]->getIndex() + 1, 1);
+            } else {
+                GUI::bufAddChar(' ');
+            }
+            GUI::bufAddChar(':');
+            GUI::bufAddHeaterTemp(heatedBeds[auxHeaterIndex], true);
+        } else if (auxHeaterIndex >= NUM_HEATED_BEDS) {
+            GUI::bufAddChar('C');
+            if (NUM_HEATED_CHAMBERS > 1) {
+                GUI::bufAddInt(heatedChambers[auxHeaterIndex - NUM_HEATED_BEDS]->getIndex() + 1, 1);
+            } else {
+                GUI::bufAddChar(' ');
+            }
+            GUI::bufAddChar(':');
+            GUI::bufAddHeaterTemp(heatedChambers[auxHeaterIndex - NUM_HEATED_BEDS], true);
+        }
         GUI::bufAddChar(' ');
-        GUI::bufAddChar(':');
-        GUI::bufAddHeaterTemp(heatedBeds[0], true);
-        GUI::bufAddChar(' ');
+        // change every four seconds.
+        if (!(refresh_counter % 4)) {
+            if (++auxHeaterIndex > (NUM_HEATED_BEDS + NUM_HEATED_CHAMBERS) - 1) {
+                auxHeaterIndex = 0;
+            }
+        }
 #endif
         GUI::bufAddStringP(PSTR("FR:"));
         GUI::bufAddInt(Printer::feedrateMultiply, 3);
@@ -1166,7 +1305,7 @@ void __attribute__((weak)) startScreen(GUIAction action, void* data) {
         GUI::bufClear();
         n = 0;
         if (tool->getToolType() == ToolTypes::EXTRUDER && tool->hasSecondary() && n < 2) {
-            GUI::bufAddStringP("Fan:");
+            GUI::bufAddStringP(PSTR("Fan:"));
             GUI::bufAddInt(tool->secondaryPercent(), 3);
             GUI::bufAddChar('%');
             GUI::bufAddChar(' ');
@@ -1174,13 +1313,13 @@ void __attribute__((weak)) startScreen(GUIAction action, void* data) {
         }
 
         if (n < 2 && Printer::areAllSteppersDisabled()) {
-            GUI::bufAddStringP("Motors off");
+            GUI::bufAddStringP(PSTR("Motors off"));
             GUI::bufAddChar(' ');
             n++;
         }
 
         if (tool->getToolType() == ToolTypes::EXTRUDER && n < 2) {
-            GUI::bufAddStringP("Flow:");
+            GUI::bufAddStringP(PSTR("Flow:"));
             GUI::bufAddInt(Printer::extrudeMultiply, 3);
             GUI::bufAddChar('%');
             GUI::bufAddChar(' ');
@@ -1191,23 +1330,59 @@ void __attribute__((weak)) startScreen(GUIAction action, void* data) {
         // status info
         printRow(3, GUI::status);
     }
-    if (Printer::isPrinting()) {
-        GUI::replaceOn(GUIAction::NEXT, printProgress, nullptr, GUIPageType::FIXED_CONTENT);
-        GUI::replaceOn(GUIAction::PREVIOUS, printProgress, nullptr, GUIPageType::FIXED_CONTENT);
+    if (Printer::isPrinting() || Printer::isZProbingActive()) {
+        GuiCallback cb = Printer::isPrinting() ? printProgress : probeProgress;
+        GUI::replaceOn(GUIAction::NEXT, cb, nullptr, GUIPageType::FIXED_CONTENT);
+        GUI::replaceOn(GUIAction::PREVIOUS, cb, nullptr, GUIPageType::FIXED_CONTENT);
     }
     GUI::pushOn(GUIAction::CLICK, mainMenu, nullptr, GUIPageType::MENU);
 }
 
 void __attribute__((weak)) printProgress(GUIAction action, void* data) {
     if (action == GUIAction::DRAW) {
+#if SDSUPPORT
+        if (sd.state == SDState::SD_PRINTING) { // print from sd card
+            Printer::progress = (static_cast<float>(sd.selectedFilePos) * 100.0) / static_cast<float>(sd.selectedFileSize);
+        }
+#endif
+        static bool cycle = false;
+        uint8_t row = 0u;
         GUI::bufClear();
-        GUI::bufAddStringP(PSTR("Progress:"));
-        GUI::bufAddFloat(Printer::progress, 3, 1);
-        GUI::bufAddStringP(PSTR(" %"));
-        printRow(0, GUI::buf);
+        // Cycle name if not sd printing every 4 sec
+        if ((Printer::maxLayer != -1) && !(refresh_counter % 4)) {
+            cycle = !cycle;
+        }
+
+        if (!cycle) {
+            GUI::bufAddStringP(PSTR("Progress: "));
+            GUI::bufAddFloat(Printer::progress, 3, 1);
+            GUI::bufAddStringP(Com::tUnitPercent);
+        } else {
+            GUI::bufAddString(Printer::printName);
+        }
+
+        printRow(row++, GUI::buf);
         GUI::bufClear();
-        printRow(1, GUI::buf);
-        printRow(2, GUI::buf);
+        if (Printer::maxLayer != -1) {
+            GUI::bufAddStringP(PSTR("Layer: "));
+            GUI::bufAddInt(Printer::currentLayer, 3);
+            GUI::bufAddStringP(Com::tSlash);
+            GUI::bufAddInt(Printer::maxLayer, 3);
+            printRow(row++, GUI::buf);
+            GUI::bufClear();
+        }
+        GUI::bufAddStringP(PSTR("Height: "));
+        GUI::bufAddFloat(Motion1::getShowPosition(Z_AXIS), 3, 2);
+        GUI::bufAddStringP(Com::tUnitMM);
+
+        if (Printer::maxLayer == -1) { // SD Printing, always show name
+            printRow(row++, GUI::buf);
+            GUI::bufClear();
+            GUI::bufAddString(Printer::printName);
+        }
+
+        printRow(row++, GUI::buf);
+        GUI::bufClear();
         printRow(3, GUI::status);
     }
     GUI::replaceOn(GUIAction::NEXT, startScreen, nullptr, GUIPageType::FIXED_CONTENT);
@@ -1215,10 +1390,72 @@ void __attribute__((weak)) printProgress(GUIAction action, void* data) {
     GUI::pushOn(GUIAction::CLICK, mainMenu, nullptr, GUIPageType::MENU);
 }
 
+void __attribute__((weak)) probeProgress(GUIAction action, void* data) {
+    if (action == GUIAction::DRAW) {
+        if (Printer::isZProbingActive()) {
+            GUI::bufClear();
+            GUI::bufAddStringP(Com::tProbing);
+            // Using our own counter instead of refresh_counter
+            // since this screen might get updated faster than usual
+            static ufast8_t dotCounter = 0;
+            static millis_t lastDotTime = 0;
+            if ((HAL::timeInMilliseconds() - lastDotTime) >= 1000ul) {
+                dotCounter++;
+                lastDotTime = HAL::timeInMilliseconds();
+            }
+
+            //...
+            fast8_t len = dotCounter % 4;
+            for (fast8_t i = 0; i < 3; i++) {
+                GUI::bufAddChar(i < len ? '.' : ' ');
+            }
+            if (GUI::curProbingProgress) {
+
+                GUI::bufAddChar(' ');
+                GUI::bufAddChar(' ');
+                GUI::bufAddLong((GUI::curProbingProgress->num * 100u) / (GUI::curProbingProgress->maxNum), 3);
+                GUI::bufAddChar('%');
+                printRow(0, GUI::buf);
+                GUI::bufClear();
+                // Xmm x Ymm
+                GUI::bufAddStringP(Com::tXColon);
+                GUI::bufAddLong(GUI::curProbingProgress->x, 3);
+                GUI::bufAddStringP(Com::tUnitMM);
+                GUI::bufAddChar(' ');
+                GUI::bufAddStringP(Com::tYColon);
+                GUI::bufAddLong(GUI::curProbingProgress->y, 3);
+                GUI::bufAddStringP(Com::tUnitMM);
+                printRowCentered(1, GUI::buf);
+                GUI::bufClear();
+                // (+0.000mm)
+                float z = GUI::curProbingProgress->z;
+                if (z != IGNORE_COORDINATE && z != ILLEGAL_Z_PROBE) {
+                    GUI::bufAddChar('(');
+                    if (z >= 0) {
+                        GUI::bufAddChar('+');
+                    }
+                    GUI::bufAddFloat(z, 0, 3);
+                    GUI::bufAddStringP(Com::tUnitMM);
+                    GUI::bufAddChar(')');
+                }
+                printRowCentered(2, GUI::buf);
+            } else {
+                GUI::bufClear();
+                printRow(0, GUI::buf);
+                printRow(1, GUI::buf);
+                printRow(2, GUI::buf);
+            }
+            printRow(3, GUI::status);
+        }
+    }
+    GUI::replaceOn(GUIAction::NEXT, startScreen, nullptr, GUIPageType::FIXED_CONTENT);
+    GUI::replaceOn(GUIAction::PREVIOUS, startScreen, nullptr, GUIPageType::FIXED_CONTENT);
+    GUI::pushOn(GUIAction::CLICK, mainMenu, nullptr, GUIPageType::MENU);
+}
 void __attribute__((weak)) warningScreen(GUIAction action, void* data) {
     if (action == GUIAction::DRAW) {
         GUI::bufClear();
-        GUI::bufAddStringP(PSTR("Warning"));
+        GUI::bufAddStringP(Com::tWarning);
         printRow(0, GUI::buf);
         char* text = static_cast<char*>(data);
         printRowCentered(1, text);
@@ -1260,7 +1497,55 @@ void __attribute__((weak)) infoScreen(GUIAction action, void* data) {
         GUI::pop();
     }
 }
+void __attribute__((weak)) warningScreenP(GUIAction action, void* data) {
+    if (action == GUIAction::DRAW) {
+        GUI::bufClear();
+        GUI::bufAddStringP(PSTR("Warning"));
+        printRow(0, GUI::buf);
+        GUI::bufClear();
+        GUI::bufAddStringP((const char*)data);
+        printRowCentered(1, GUI::buf);
 
+        GUI::bufClear();
+        printRow(2, GUI::buf);
+        GUI::bufAddStringP(Com::tBtnOK);
+        printRowCentered(3, GUI::buf);
+    } else if (action == GUIAction::CLICK || action == GUIAction::BACK) {
+        GUI::pop();
+    }
+}
+void __attribute__((weak)) errorScreenP(GUIAction action, void* data) {
+    if (action == GUIAction::DRAW) {
+        GUI::bufClear();
+        GUI::bufAddStringP(PSTR("Error"));
+        printRow(0, GUI::buf);
+        GUI::bufClear();
+        GUI::bufAddStringP((const char*)data);
+        printRowCentered(1, GUI::buf);
+        GUI::bufClear();
+        printRow(2, GUI::buf);
+        GUI::bufAddStringP(Com::tBtnOK);
+        printRowCentered(3, GUI::buf);
+    } else if (action == GUIAction::CLICK || action == GUIAction::BACK) {
+        GUI::pop();
+    }
+}
+void __attribute__((weak)) infoScreenP(GUIAction action, void* data) {
+    if (action == GUIAction::DRAW) {
+        GUI::bufClear();
+        GUI::bufAddStringP(PSTR("Info"));
+        printRow(0, GUI::buf);
+        GUI::bufClear();
+        GUI::bufAddStringP((const char*)data);
+        printRowCentered(1, GUI::buf);
+        GUI::bufClear();
+        printRow(2, GUI::buf);
+        GUI::bufAddStringP(Com::tBtnOK);
+        printRowCentered(3, GUI::buf);
+    } else if (action == GUIAction::CLICK || action == GUIAction::BACK) {
+        GUI::pop();
+    }
+}
 #define SPIN_CENTER_X 10
 #define SPIN_CENTER_Y 38
 
@@ -1268,8 +1553,44 @@ void waitScreen(GUIAction action, void* data) {
     if (action == GUIAction::DRAW) {
         char* text = static_cast<char*>(data);
 
-        printRowCentered(0, text);
+        char* newLine = strchr(text, '\n');
+        if (newLine) {
+            *newLine = '\0';
+            printRowCentered(0, text);
+            *newLine = '\n';
+            printRowCentered(1, newLine + 1);
+            GUI::bufClear();
+        } else {
+            printRowCentered(0, text);
+            GUI::bufClear();
+            printRow(1, GUI::buf);
+        }
+        printRow(2, GUI::buf);
+        fast8_t len = refresh_counter % UI_COLS;
+        for (fast8_t i = 0; i < len; i++) {
+            GUI::bufAddChar('.');
+        }
+        printRow(3, GUI::buf);
+    }
+}
+
+void waitScreenP(GUIAction action, void* data) {
+    if (action == GUIAction::DRAW) {
         GUI::bufClear();
+        GUI::bufAddStringP((const char*)data);
+        char* newLine = strchr(GUI::buf, '\n');
+        if (newLine) {
+            *newLine = '\0';
+            printRowCentered(0, GUI::buf);
+            *newLine = '\n';
+            printRowCentered(1, newLine + 1);
+            GUI::bufClear();
+        } else {
+            printRowCentered(0, GUI::buf);
+            GUI::bufClear();
+            printRow(1, GUI::buf);
+        }
+        printRow(2, GUI::buf);
         fast8_t len = refresh_counter % UI_COLS;
         for (fast8_t i = 0; i < len; i++) {
             GUI::bufAddChar('.');

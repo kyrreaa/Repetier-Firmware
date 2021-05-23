@@ -84,7 +84,7 @@ class Motion2Buffer;
 #define FLAG_ADVANCE 4
 #define FLAG_ACTIVE_SECONDARY 8 ///< Secondary tool should be active
 
-enum Motion1State {
+enum class Motion1State {
     FREE = 0,              // Not used currenty
     RESERVED = 1,          // Start to fill
     JUNCTION_COMPUTED = 2, // Max. junction speed is computed
@@ -95,7 +95,7 @@ enum Motion1State {
     RUNNUNG = 7            // Currently being executed
 };
 
-enum Motion1Action {
+enum class Motion1Action {
     WAIT = 0,          // Add a wait - in the hope a next move follows for bette roptimization
     WARMUP = 1,        // Preheat laser
     MOVE = 2,          // A plain move
@@ -103,7 +103,7 @@ enum Motion1Action {
     MOVE_BABYSTEPS = 4 // Babysteps outside of active moves
 };
 
-enum EndstopMode {
+enum class EndstopMode {
     DISABLED = 0,        // Endstop tests disabled
     STOP_AT_ANY_HIT = 1, // Stop move on any hit endstop
     STOP_HIT_AXES = 2,   // Continue until all endstops are hit
@@ -131,6 +131,7 @@ public:
     float startSpeed;         ///< Starting speed in mm/s
     float endSpeed;           ///< End speed in mm/s
     float length;             ///< Length of move in mm
+    int32_t intLength;        ///< Length in 0,001mm = 1000 * length
     float invLength;          ///< 1/length for faster computations
     float eAdv;               ///< eAdv = veclocity * eAdv used for advance
 
@@ -191,7 +192,22 @@ public:
 #define EPR_M1_PARK_Z EPR_M1_AXIS_COMP_END + 8
 #define EPR_M1_VELOCITY_PROFILE EPR_M1_AXIS_COMP_END + 12
 #define EPR_M1_AUTOLEVEL EPR_M1_AXIS_COMP_END + 13
-#define EPR_M1_TOTAL EPR_M1_AXIS_COMP_END + 14
+
+#if FEATURE_RETRACTION
+#define EPR_M1_AUTORETRACT EPR_M1_AXIS_COMP_END + 14
+#define EPR_M1_RETRACT_LENGTH EPR_M1_AUTORETRACT + 1
+#define EPR_M1_RETRACT_LONG_LENGTH EPR_M1_RETRACT_LENGTH + 4
+#define EPR_M1_RETRACT_SPEED EPR_M1_RETRACT_LONG_LENGTH + 4
+#define EPR_M1_RETRACT_ZLIFT EPR_M1_RETRACT_SPEED + 4
+#define EPR_M1_RETRACT_UNDO_SPEED EPR_M1_RETRACT_ZLIFT + 4
+#define EPR_M1_RETRACT_UNDO_EXTRA_LENGTH EPR_M1_RETRACT_UNDO_SPEED + 4
+#define EPR_M1_RETRACT_UNDO_EXTRA_LONG_LENGTH EPR_M1_RETRACT_UNDO_EXTRA_LENGTH + 4
+#define EPR_M1_RETRACT_END EPR_M1_RETRACT_UNDO_EXTRA_LONG_LENGTH + 4
+#else
+#define EPR_M1_RETRACT_END EPR_M1_AXIS_COMP_END + 14
+#endif
+
+#define EPR_M1_TOTAL EPR_M1_RETRACT_END
 
 class Motion2;
 class EndstopDriver;
@@ -214,13 +230,15 @@ public:
     static float moveFeedrate[NUM_AXES]; // Used for genral moves like coordinate changes
     static float maxAcceleration[NUM_AXES];
     static float maxTravelAcceleration[NUM_AXES];
+    static float maxAccelerationEEPROM[NUM_AXES];       // to prevent M201 from changing defaults permanentls
+    static float maxTravelAccelerationEEPROM[NUM_AXES]; // to prevent M202 from changing defaults permanently
     static float resolution[NUM_AXES];
     static float minPos[NUM_AXES];
     static float maxPos[NUM_AXES];
-    static float minPosOff[NUM_AXES]; // positions including max. tool offset
+    static float minPosOff[NUM_AXES]; // positions including max. tool offset for global coordinates
     static float maxPosOff[NUM_AXES];
-    static float rotMax[3]; // Max positive offset from rotation at z max
-    static float rotMin[3]; // Min negative offset from rotation at z max
+    static float rotMax[3]; // Max positive offset from rotation
+    static float rotMin[3]; // Min negative offset from rotation
     static float g92Offsets[NUM_AXES];
     static float maxYank[NUM_AXES];
     static float toolOffset[3];
@@ -229,10 +247,23 @@ public:
     static float homeEndstopDistance[NUM_AXES];
     static float parkPosition[3];
     static StepperDriverBase* drivers[NUM_MOTORS];
-    static float advanceK;       // advance spring constant
-    static float advanceEDRatio; // Ratio of extrusion
+    static float advanceK;               // advance spring constant
+    static float advanceEDRatio;         // Ratio of extrusion
+    static int32_t intLengthBuffered;    // buffered length except active block
+    static int32_t maxIntLengthBuffered; // maximum length to buffer more moves
+    static float totalBabystepZ;         // Sum since homing for z helper functions
 #if FEATURE_AXISCOMP
     static float axisCompTanXY, axisCompTanXZ, axisCompTanYZ;
+#endif
+#if FEATURE_RETRACTION
+    static bool retracted;
+    static float retractLength;
+    static float retractLongLength;
+    static float retractSpeed;
+    static float retractZLift;
+    static float retractUndoSpeed;
+    static float retractUndoExtraLength;
+    static float retractUndoExtraLongLength;
 #endif
     static bool wasLastSecondary; ///< true if last move had secondary flag
     static fast8_t homeDir[NUM_AXES];
@@ -266,6 +297,7 @@ public:
     static volatile fast8_t lengthUnprocessed;          /// Number of unprocessed entries
     // Initializes data structures
     static void init();
+    static void emergencyStop(); // clears all buffers so motors stop immediately
     static INLINE bool isAutolevelActive() { return autolevelActive; }
     // Set autoleveling, changes current position according to printer position
     static void setAutolevelActive(bool state, bool silent = false);
@@ -302,7 +334,7 @@ public:
     static void waitForEndOfMoves();
     static void waitForXFreeMoves(fast8_t, bool allowMoves = false);
     static fast8_t buffersUsed();
-    static void WarmUp(uint32_t wait, int second);
+    static void WarmUp(uint32_t waitUS, int second);
     static void reportBuffers();
     static void moveToParkPosition();
     /// Pushes current position to memory stack. Return true on success.
@@ -316,18 +348,20 @@ public:
     static bool simpleHome(fast8_t axis);
     static void correctBumpOffset(); // Adjust position to offset
     static PGM_P getAxisString(fast8_t axis);
-    static EndstopDriver& endstopFoxAxisDir(fast8_t axis, bool maxDir);
+    static EndstopDriver& endstopForAxisDir(fast8_t axis, bool maxDir);
+    static void setHardwareEndstopsAttached(bool attach, EndstopDriver* specificDriver = nullptr);
     static void resetTransformationMatrix(bool silent);
 #if LEVELING_METHOD > 0 || defined(DOXYGEN)
     //static void buildTransformationMatrix(float h1,float h2,float h3);
     static void buildTransformationMatrix(Plane& plane);
 #endif
     static void updateDerived();
-    static void eepromHandle();
+    static void eepromHandle(bool firstImport);
     static void eepromReset();
     static void callBeforeHomingOnSteppers();
     static void callAfterHomingOnSteppers();
     static void updateRotMinMax();
+    static int32_t getBufferedLengthMM();
 
 private:
     // Moved outside FEATURE_Z_PROBE to allow auto-level functional test on

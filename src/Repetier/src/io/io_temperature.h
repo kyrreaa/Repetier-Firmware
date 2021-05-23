@@ -42,17 +42,24 @@ IO_TEMPERATURE_TABLE(name,analog,table)
 #undef IO_TEMP_TABLE_NTC
 #undef IO_TEMP_TABLE_PTC
 #undef IO_TEMPERATURE_TABLE
+#undef IO_TEMPERATURE_BETA
+#undef IO_TEMPERATURE_TABLE_PERMANENT_ERROR
+#undef IO_TEMPERATURE_BETA_PERMANENT_ERROR
 #undef IO_TEMPERATURE_MAX31855
 #undef IO_TEMPERATURE_MAX6675
 #undef IO_TEMPERATURE_FAKE
 #undef IO_HOTTEST_OF_2
 #undef IO_COOLEST_OF_2
+#undef IO_FIRST_WORKING_OF_2
 
 #if IO_TARGET == IO_TARGET_INIT // hardware init
 
 #define IO_TEMP_TABLE_NTC(name, dataname)
 #define IO_TEMP_TABLE_PTC(name, dataname)
 #define IO_TEMPERATURE_TABLE(name, analog, table)
+#define IO_TEMPERATURE_BETA(name, analog, beta, seriesResistance, thermistorR25, cCoefficient)
+#define IO_TEMPERATURE_TABLE_PERMANENT_ERROR(name, analog, table)
+#define IO_TEMPERATURE_BETA_PERMANENT_ERROR(name, analog, beta, seriesResistance, thermistorR25, cCoefficient)
 #define IO_TEMPERATURE_MAX31855(name, spiDriver)
 #define IO_TEMPERATURE_MAX6675(name, spiDriver)
 
@@ -69,21 +76,21 @@ public:
 };
 
 #define IO_TEMP_TABLE_NTC(name, dataname) \
-    extern const short dataname##_table[NUM_##dataname][2] PROGMEM; \
+    extern const short name##_table[NUM_##dataname][2] PROGMEM; \
     class name##Class : public IOTemperatureTable { \
     public: \
         float interpolateFor(int value) final { \
-            return interpolateNTC(value, NUM_##dataname, (const short*)&dataname##_table[0][0]); \
+            return interpolateNTC(value, NUM_##dataname, (const short*)&name##_table[0][0]); \
         } \
     }; \
     extern name##Class name;
 
 #define IO_TEMP_TABLE_PTC(name, dataname) \
-    extern const short dataname##_table[NUM_##dataname][2] PROGMEM; \
+    extern const short name##_table[NUM_##dataname][2] PROGMEM; \
     class name##Class : public IOTemperatureTable { \
     public: \
         float interpolateFor(int value) final { \
-            return interpolatePTC(value, NUM_##dataname, (const short*)&dataname##_table[0][0]); \
+            return interpolatePTC(value, NUM_##dataname, (const short*)&name##_table[0][0]); \
         } \
     }; \
     extern name##Class name;
@@ -97,6 +104,73 @@ public:
         bool isDefect() { \
             int a = analog.get(); \
             return a < 20 || a > 4075; \
+        } \
+    }; \
+    extern name##Class name;
+
+#define IO_TEMPERATURE_BETA(name, analog, beta, seriesResistance, thermistorR25, cCoefficient) \
+    class name##Class : public IOTemperature { \
+    public: \
+        float get() { \
+            constexpr float invBeta = 1.0f / beta; \
+            constexpr float invRoom = (1.0f / (25.0f - (-273.15))); \
+            constexpr float logR25 = logf(thermistorR25); \
+            constexpr float alpha = invRoom - invBeta * logR25 - cCoefficient * logR25 * logR25 * logR25; \
+            int aRead = analog.get(); \
+            aRead = aRead > 4094 ? 4094 : aRead < 1 ? 1 : aRead; \
+            float logResis = logf(seriesResistance * aRead / (4095 - aRead)); \
+            float steinharthart = alpha + invBeta * logResis; \
+            if (cCoefficient) { \
+                steinharthart += cCoefficient * (logResis * logResis * logResis); \
+            } \
+            return ((1.0f / steinharthart) - 273.15f); \
+        } \
+        bool isDefect() { \
+            int a = analog.get(); \
+            return a < 20 || a > 4075; \
+        } \
+    }; \
+    extern name##Class name;
+
+#define IO_TEMPERATURE_TABLE_PERMANENT_ERROR(name, analog, table) \
+    class name##Class : public IOTemperature { \
+        bool hadError = false; \
+\
+    public: \
+        float get() { \
+            return table.interpolateFor(analog.get()); \
+        } \
+        bool isDefect() { \
+            int a = analog.get(); \
+            hadError |= a < 20 || a > 4075; \
+            return hadError; \
+        } \
+    }; \
+    extern name##Class name;
+
+#define IO_TEMPERATURE_BETA_PERMANENT_ERROR(name, analog, beta, seriesResistance, thermistorR25, cCoefficient) \
+    class name##Class : public IOTemperature { \
+        bool hadError = false; \
+\
+    public: \
+        float get() { \
+            constexpr float invBeta = 1.0f / beta; \
+            constexpr float invRoom = (1.0f / (25.0f - (-273.15))); \
+            constexpr float logR25 = logf(thermistorR25); \
+            constexpr float alpha = invRoom - invBeta * logR25 - cCoefficient * logR25 * logR25 * logR25; \
+            int aRead = analog.get(); \
+            aRead = aRead > 4094 ? 4094 : aRead < 1 ? 1 : aRead; \
+            float logResis = logf(seriesResistance * aRead / (4095 - aRead)); \
+            float steinharthart = alpha + invBeta * logResis; \
+            if (cCoefficient) { \
+                steinharthart += cCoefficient * (logResis * logResis * logResis); \
+            } \
+            return ((1.0f / steinharthart) - 273.15f); \
+        } \
+        bool isDefect() { \
+            int a = analog.get(); \
+            hadError |= a < 20 || a > 4075; \
+            return hadError; \
         } \
     }; \
     extern name##Class name;
@@ -117,7 +191,7 @@ public:
     public: \
         name##Class() \
             : errors(0) \
-            , temp(0) {} \
+            , temp(0) { } \
         float get() { \
             if (errors >= 0) { \
                 isDefect(); \
@@ -168,7 +242,7 @@ public:
         name##Class() \
             : errors(0) \
             , lastRun(0) \
-            , temp(0) {} \
+            , temp(0) { } \
         float get() { \
             if (errors == 0) { \
                 isDefect(); \
@@ -228,17 +302,39 @@ public:
     }; \
     extern name##Class name;
 
+#define IO_FIRST_WORKING_OF_2(name, temp1, temp2) \
+    class name##Class : public IOTemperature { \
+    public: \
+        float get() { \
+            if (!temp1.isDefect()) { \
+                return temp1.get(); \
+            } \
+            return temp2.get(); \
+        } \
+        bool isDefect() { return temp1.isDefect() && temp2.isDefect(); } \
+    }; \
+    extern name##Class name;
+
 #elif IO_TARGET == IO_TARGET_DEFINE_VARIABLES // variable
 
 #define IO_TEMP_TABLE_NTC(name, dataname) \
-    const short dataname##_table[NUM_##dataname][2] PROGMEM = { dataname }; \
+    const short name##_table[NUM_##dataname][2] PROGMEM = { dataname }; \
     name##Class name;
 
 #define IO_TEMP_TABLE_PTC(name, dataname) \
-    const short dataname##_table[NUM_##dataname][2] PROGMEM = { dataname }; \
+    const short name##_table[NUM_##dataname][2] PROGMEM = { dataname }; \
     name##Class name;
 
 #define IO_TEMPERATURE_TABLE(name, analog, table) \
+    name##Class name;
+
+#define IO_TEMPERATURE_BETA(name, analog, beta, seriesResistance, thermistorR25, cCoefficient) \
+    name##Class name;
+
+#define IO_TEMPERATURE_TABLE_PERMANENT_ERROR(name, analog, table) \
+    name##Class name;
+
+#define IO_TEMPERATURE_BETA_PERMANENT_ERROR(name, analog, beta, seriesResistance, thermistorR25, cCoefficient) \
     name##Class name;
 
 #define IO_TEMPERATURE_MAX31855(name, spiDriver) \
@@ -256,6 +352,9 @@ public:
 #define IO_COOLEST_OF_2(name, temp1, temp2) \
     name##Class name;
 
+#define IO_FIRST_WORKING_OF_2(name, temp1, temp2) \
+    name##Class name;
+
 #endif
 
 #ifndef IO_TEMP_TABLE_NTC
@@ -266,6 +365,15 @@ public:
 #endif
 #ifndef IO_TEMPERATURE_TABLE
 #define IO_TEMPERATURE_TABLE(name, analog, table)
+#endif
+#ifndef IO_TEMPERATURE_BETA
+#define IO_TEMPERATURE_BETA(name, analog, beta, seriesResistance, thermistorR25, cCoefficient)
+#endif
+#ifndef IO_TEMPERATURE_TABLE_PERMANENT_ERROR
+#define IO_TEMPERATURE_TABLE_PERMANENT_ERROR(name, analog, table)
+#endif
+#ifndef IO_TEMPERATURE_BETA_PERMANENT_ERROR
+#define IO_TEMPERATURE_BETA_PERMANENT_ERROR(name, analog, beta, seriesResistance, thermistorR25, cCoefficient)
 #endif
 #ifndef IO_TEMPERATURE_MAX31855
 #define IO_TEMPERATURE_MAX31855(name, spiDriver)
@@ -281,4 +389,7 @@ public:
 #endif
 #ifndef IO_COOLEST_OF_2
 #define IO_COOLEST_OF_2(name, temp1, temp2)
+#endif
+#ifndef IO_FIRST_WORKING_OF_2
+#define IO_FIRST_WORKING_OF_2(name, temp1, temp2)
 #endif

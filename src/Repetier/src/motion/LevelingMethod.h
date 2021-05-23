@@ -47,28 +47,41 @@ public:
     inline static void setDistortionEnabled(bool newState) {}
     inline static bool isDistortionEnabled() { return false; }
     inline static float distortionAt(float xp, float yp) { return 0; }
-    inline static bool measure() {}
+    static void importBumpMatrix(char* filename) {}
+    static void exportBumpMatrix(char* filename) {}
+    inline static bool measure(GCode* com) { return true; }
     inline static void init() {}
     inline static void handleEeprom() {}
     inline static void resetEeprom() {}
-    inline static bool execute_G32(GCode* com) {}
+    inline static bool execute_G32(GCode* com) { return true; }
     inline static void execute_G33(GCode* com) {}
     inline static void execute_M323(GCode* com) {}
 };
 
 #elif LEVELING_METHOD == LEVELING_METHOD_GRID // Grid leveling
 
-#ifndef GRID_SIZE
-#define GRID_SIZE 3
+#ifndef BUMP_DEFAULT_AUTOIMPORT_DIR
+#define BUMP_DEFAULT_AUTOIMPORT_DIR "matrixes/"
+#endif
+
+#ifndef MAX_GRID_SIZE
+#ifdef GRID_SIZE // Old config backwards compatibility
+#define MAX_GRID_SIZE GRID_SIZE
+#else
+#define MAX_GRID_SIZE 3
+#endif
 #endif
 
 class Leveling {
-    static float grid[GRID_SIZE][GRID_SIZE]; // Bumps up have negative values!
+    static float grid[MAX_GRID_SIZE][MAX_GRID_SIZE]; // Bumps up have negative values!
+    static float gridTemp;
     static float xMin, xMax, yMin, yMax;
     static float dx, dy, invDx, invDy;
     static float startDegrade, endDegrade, diffDegrade;
+    static char autoImportDir[LONG_FILENAME_LENGTH + 1];
     static uint16_t eprStart;
     static uint8_t distortionEnabled;
+    static uint8_t curGridSize;
     inline static float xPosFor(fast8_t index) {
         return xMin + dx * index;
     }
@@ -79,7 +92,7 @@ class Leveling {
     static bool extrapolateableNeighbours(int x, int y);
     static float extrapolateNeighbours(int x, int y);
     inline static bool validGridIndex(int x, int y) {
-        return x >= 0 && y >= 0 && x < GRID_SIZE && y < GRID_SIZE;
+        return x >= 0 && y >= 0 && x < curGridSize && y < curGridSize;
     }
     static bool gridIndexForDir(int dir, int dist, int& x, int& y);
 #if ENABLE_BUMP_CORRECTION
@@ -93,16 +106,20 @@ public:
     static void subDistortion(float* pos); // printer coordinates
     inline static bool isDistortionEnabled() { return distortionEnabled; }
     static float distortionAt(float xp, float yp); // printer coordinates
+    static void importBumpMatrix(char* filename);
+    static void exportBumpMatrix(char* filename);
     static void execute_M323(GCode* com);
 #else
     inline static void addDistortion(float* pos) {}
     inline static void subDistortion(float* pos) {}
     inline static bool isDistortionEnabled() { return false; }
     inline static void execute_M323(GCode* com) {}
-    inline static float distortionAt(float xp, float yp) { return 0; }
+    inline static float distortionAt(float xp, float yp) { return 0.0f; }
+    static void importBumpMatrix(char* filename) {}
+    static void exportBumpMatrix(char* filename) {}
 #endif
     static void reportDistortionStatus();
-    static bool measure();
+    static bool measure(GCode* com);
     static void init();
     static void handleEeprom();
     static void resetEeprom();
@@ -120,7 +137,9 @@ public:
     inline static void setDistortionEnabled(bool newState) {}
     inline static bool isDistortionEnabled() { return false; }
     inline static float distortionAt(float xp, float yp) { return 0; }
-    static bool measure();
+    static bool measure(GCode* com);
+    static void importBumpMatrix(char* filename) {}
+    static void exportBumpMatrix(char* filename) {}
     inline static void init() {}
     inline static void handleEeprom() {}
     inline static void resetEeprom() {}
@@ -138,7 +157,9 @@ public:
     inline static void setDistortionEnabled(bool newState) {}
     inline static bool isDistortionEnabled() { return false; }
     inline static float distortionAt(float xp, float yp) { return 0; }
-    static bool measure();
+    static bool measure(GCode* com);
+    static void importBumpMatrix(char* filename) {}
+    static void exportBumpMatrix(char* filename) {}
     inline static void init() {}
     inline static void handleEeprom() {}
     inline static void resetEeprom() {}

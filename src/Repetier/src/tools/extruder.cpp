@@ -33,7 +33,6 @@ void ToolExtruder::reset(float offx, float offy, float offz, float diameter, flo
 
 /// Called when the tool gets activated.
 void ToolExtruder::activate() {
-    Motion1::waitForEndOfMoves();
     Motion1::setMotorForAxis(stepper, E_AXIS);
     Motion1::maxYank[E_AXIS] = yank;
     Motion1::resolution[E_AXIS] = stepsPerMM;
@@ -41,6 +40,9 @@ void ToolExtruder::activate() {
     Motion1::maxFeedrate[E_AXIS] = maxSpeed;
     Motion1::maxAcceleration[E_AXIS] = Motion1::maxTravelAcceleration[E_AXIS] = acceleration;
     Motion1::advanceK = advance;
+    if (changeHandler) {
+        changeHandler->activate(this);
+    }
     GCode::executeFString(startScript);
     Motion1::waitForEndOfMoves();
 }
@@ -48,6 +50,9 @@ void ToolExtruder::activate() {
 /// Gets called when the tool gets disabled.
 void ToolExtruder::deactivate() {
     GCode::executeFString(endScript);
+    if (changeHandler) {
+        changeHandler->deactivate(this);
+    }
     Motion1::setMotorForAxis(nullptr, E_AXIS);
 }
 
@@ -121,6 +126,60 @@ void ToolExtruder::directionMotor(bool dir) {
     stepper->dir(dir);
 }
 
+#if FEATURE_RETRACTION
+void ToolExtruder::retract(bool backwards, bool longRetract) {
+    if (!Motion1::retractSpeed
+        || (!Motion1::retractLength && !longRetract)
+        || (!Motion1::retractLongLength && longRetract)) {
+        // invalid settings
+        return;
+    }
+
+    if ((Motion1::retracted && backwards) || (!Motion1::retracted && !backwards)) {
+        return;
+    }
+
+    float prevSpeed = Printer::feedrate;
+    if (Motion1::retractZLift && Motion1::isAxisHomed(Z_AXIS)) {
+        float offset = -(getOffsetZ() + (backwards ? -Motion1::retractZLift : 0.0f));
+
+        Motion1::setTmpPositionXYZ(IGNORE_COORDINATE,
+                                   IGNORE_COORDINATE,
+                                   Motion1::currentPosition[Z_AXIS] + offset - Motion1::toolOffset[Z_AXIS]);
+        Motion1::moveByOfficial(Motion1::tmpPosition, Motion1::moveFeedrate[Z_AXIS], true); // Z-Hops are G1's.
+        Motion1::toolOffset[Z_AXIS] = offset;
+        Motion1::updatePositionsFromCurrentTransformed();
+
+        //Motion1::setToolOffset(-getOffsetX(), -getOffsetY(), -(getOffsetZ() + offset));
+    }
+    float amount = 0.0f;
+    if (!longRetract) {
+        amount = backwards ? -Motion1::retractLength
+                           : (Motion1::retractLength + Motion1::retractUndoExtraLength);
+    } else {
+        amount = backwards ? -Motion1::retractLongLength
+                           : (Motion1::retractLongLength + Motion1::retractUndoExtraLongLength);
+    }
+
+    amount *= Printer::extrusionFactor;
+
+    float speed = Motion1::retractSpeed;
+    if (backwards && Motion1::retractUndoSpeed) {
+        speed = Motion1::retractUndoSpeed;
+    }
+    speed *= 0.01f * static_cast<float>(Printer::feedrateMultiply);
+
+    float prevE = Motion1::currentPositionTransformed[E_AXIS];
+    Motion1::setTmpPositionXYZE(IGNORE_COORDINATE, IGNORE_COORDINATE, IGNORE_COORDINATE, amount);
+    Motion1::moveRelativeByPrinter(Motion1::tmpPosition, speed, false);
+    Motion1::currentPositionTransformed[E_AXIS] = prevE;
+    Motion1::updatePositionsFromCurrentTransformed();
+
+    Printer::feedrate = prevSpeed;
+    Motion1::retracted = backwards;
+}
+#endif
+
 // ------------ JamDetectorHW ------------
 
 template <class inputPin, class ObserverType>
@@ -165,7 +224,7 @@ void JamDetectorHW<inputPin, ObserverType>::testForJam() {
             EVENT_JAM_DETECTED;
             Com::printFLN(PSTR("important:Extruder jam detected"));
 #if SDSUPPORT
-            if (sd.sdmode == 2) {
+            if (sd.state == SDState::SD_PRINTING) {
                 sd.pausePrint(true);
                 EVENT_JAM_DETECTED_END;
                 return;
@@ -173,6 +232,8 @@ void JamDetectorHW<inputPin, ObserverType>::testForJam() {
 #endif // SDSUPPORT
             GCodeSource::printAllFLN(PSTR("// action:out_of_filament T"), (int32_t)tool->getToolId());
             GCodeSource::printAllFLN(PSTR("RequestPause:Extruder Jam Detected!"));
+            GUI::push(warningScreenP, (void*)PSTR("Jam/Out of filament"), GUIPageType::STATUS);
+            Printer::playDefaultSound(DefaultSounds::WARNING);
             // GCodeSource::printAllFLN(PSTR("// action:pause")); // add later when host/server know new meaning!
             EVENT_JAM_DETECTED_END;
         }
@@ -255,7 +316,7 @@ void FilamentDetector<inputPin>::testFilament() {
             EVENT_JAM_DETECTED;
             Com::printFLN(PSTR("important:No Filament detected"));
 #if SDSUPPORT
-            if (sd.sdmode == 2) {
+            if (sd.state == SDState::SD_PRINTING) {
                 sd.pausePrint(true);
                 EVENT_JAM_DETECTED_END;
                 return;
@@ -263,6 +324,9 @@ void FilamentDetector<inputPin>::testFilament() {
 #endif // SDSUPPORT
             GCodeSource::printAllFLN(PSTR("// action:out_of_filament T"), (int32_t)tool->getToolId());
             GCodeSource::printAllFLN(PSTR("RequestPause:No filament detected!"));
+            GUI::push(warningScreenP, (void*)PSTR("Out of filament"), GUIPageType::STATUS);
+            Printer::playDefaultSound(DefaultSounds::WARNING);
+
             // GCodeSource::printAllFLN(PSTR("// action:pause")); // add later when host/server know new meaning!
             EVENT_JAM_DETECTED_END;
         }
@@ -270,5 +334,5 @@ void FilamentDetector<inputPin>::testFilament() {
 }
 
 #undef IO_TARGET
-#define IO_TARGET IO_TARGET_TOOLS_TEMPLATES
+#define IO_TARGET IO_TARGET_TEMPLATES
 #include "../io/redefine.h"

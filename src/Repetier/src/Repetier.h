@@ -24,6 +24,84 @@
 
 #include <math.h>
 #include <stdint.h>
+#if 1 || !(defined(__AVR_ATmega1280__) || defined(__AVR_ATmega2560__))
+#include <type_traits>
+#else
+namespace std {
+/// integral_constant
+template <typename _Tp, _Tp __v>
+struct integral_constant {
+    static constexpr _Tp value = __v;
+    typedef _Tp value_type;
+    typedef integral_constant<_Tp, __v> type;
+    constexpr operator value_type() const { return value; }
+#if __cplusplus > 201103L
+
+#define __cpp_lib_integral_constant_callable 201304
+
+    constexpr value_type operator()() const { return value; }
+#endif
+};
+template <typename _Tp, _Tp __v>
+constexpr _Tp integral_constant<_Tp, __v>::value;
+/// The type used as a compile-time boolean with true value.
+typedef integral_constant<bool, true> true_type;
+
+/// The type used as a compile-time boolean with false value.
+typedef integral_constant<bool, false> false_type;
+template <typename...>
+struct __and_;
+
+template <>
+struct __and_<>
+    : public true_type { };
+
+template <typename>
+struct __is_void_helper
+    : public false_type { };
+
+template <>
+struct __is_void_helper<void>
+    : public true_type { };
+
+// Primary template.
+/// Define a member typedef @c type only if a boolean constant is true.
+template <bool, typename _Tp = void>
+struct enable_if { };
+
+// Partial specialization for true.
+template <typename _Tp>
+struct enable_if<true, _Tp> { typedef _Tp type; };
+
+template <typename... _Cond>
+using _Require = typename enable_if<__and_<_Cond...>::value>::type;
+
+/// is_integral
+template <typename _Tp>
+struct is_integral
+    : public __is_integral_helper<typename remove_cv<_Tp>::type>::type { };
+
+template <typename>
+struct __is_floating_point_helper
+    : public false_type { };
+
+template <>
+struct __is_floating_point_helper<float>
+    : public true_type { };
+
+template <>
+struct __is_floating_point_helper<double>
+    : public true_type { };
+
+template <>
+struct __is_floating_point_helper<long double>
+    : public true_type { };
+}
+/// is_floating_point
+template <typename _Tp>
+struct is_floating_point
+    : public __is_floating_point_helper<typename remove_cv<_Tp>::type>::type { };
+#endif
 
 #ifndef REPETIER_VERSION
 #define REPETIER_VERSION "2.0.0dev"
@@ -31,6 +109,10 @@
 
 #ifndef EMERGENCY_PARSER
 #define EMERGENCY_PARSER 1
+#endif
+
+#ifndef HOST_PRIORITY_CONTROLS
+#define HOST_PRIORITY_CONTROLS EMERGENCY_PARSER
 #endif
 
 #include "utilities/constants.h"
@@ -171,7 +253,6 @@ usage or for searching for memory induced errors. Switch it off for production, 
 #define ANALOG_REF ANALOG_REF_AVCC
 
 #include "utilities/RMath.h"
-#include "utilities/RVector3.h"
 extern void updateEndstops();
 
 // we can not prevent this as some configurations need a parameter and others not
@@ -195,19 +276,53 @@ extern void updateEndstops();
 #define EEPROM_SDCARD 3        /** Use mounted sd card as eeprom replacement */
 #define EEPROM_FLASH 4         /** Use flash memory as eeprom replacement */
 
+class GCode;
 class ServoInterface {
 public:
-    virtual int getPosition();
-    virtual void setPosition(int pos, int32_t timeout);
-    virtual void enable();
-    virtual void disable();
+    virtual int getPosition() = 0;
+    virtual void setPosition(int pos, int32_t timeout) = 0;
+    virtual void enable() = 0;
+    virtual void disable() = 0;
+    virtual void executeGCode(GCode* com) = 0;
 };
+
+enum class BootReason {
+    SOFTWARE_RESET = 0,
+    BROWNOUT = 1,
+    LOW_POWER = 2,
+    WATCHDOG_RESET = 3,
+    EXTERNAL_PIN = 4,
+    POWER_UP = 5,
+    UNKNOWN = -1
+};
+
+#define DEFAULT_MATERIAL(name, extr, bed, chamber) showTemperature(action, name, extr, bed, chamber);
 
 #include "io/temperature_tables.h"
 #include "Configuration.h"
 
 #if NUM_AXES < 4
 #error The minimum NUM_AXES allowed is 4!
+#endif
+
+#ifndef DEFAULT_MATERIALS
+#define DEFAULT_MATERIALS \
+    DEFAULT_MATERIAL(Com::tMatPLA, 215, 60, 0) \
+    DEFAULT_MATERIAL(Com::tMatPET, 230, 55, 0) \
+    DEFAULT_MATERIAL(Com::tMatASA, 260, 105, 0) \
+    DEFAULT_MATERIAL(Com::tMatPC, 275, 110, 0) \
+    DEFAULT_MATERIAL(Com::tMatABS, 255, 100, 0) \
+    DEFAULT_MATERIAL(Com::tMatHIPS, 220, 100, 0) \
+    DEFAULT_MATERIAL(Com::tMatPP, 254, 100, 0) \
+    DEFAULT_MATERIAL(Com::tMatFLEX, 240, 50, 0)
+#endif
+
+#ifndef SAFE_HOMING
+#define SAFE_HOMING 1
+#endif
+
+#ifndef ALWAYS_CHECK_ENDSTOPS
+#define ALWAYS_CHECK_ENDSTOPS 0
 #endif
 
 #ifndef WAITING_IDENTIFIER
@@ -246,6 +361,10 @@ public:
 #define Z_PROBE_FINISHED_SCRIPT ""
 #endif
 
+#ifndef Z_PROBE_USE_MEDIAN
+#define Z_PROBE_USE_MEDIAN 0
+#endif
+
 #ifndef ARC_SUPPORT
 #define ARC_SUPPORT 1
 #endif
@@ -253,6 +372,19 @@ public:
 #ifndef HOST_RESCUE
 #define HOST_RESCUE 1
 #endif
+
+#ifndef MIN_PRINTLINE_FILL
+#define MIN_PRINTLINE_FILL 8
+#endif
+#if MIN_PRINTLINE_FILL > PRINTLINE_CACHE_SIZE
+#undef MIN_PRINTLINE_FILL
+#define MIN_PRINTLINE_FILL PRINTLINE_CACHE_SIZE
+#endif
+
+#ifndef MAX_BUFFERED_LENGTH_MM
+#define MAX_BUFFERED_LENGTH_MM 200
+#endif
+
 #if EEPROM_MODE == 0 && HOST_RESCUE
 #warning HOST_RESCUE requires eeprom support! Disabling feature.
 #undef HOST_RESCUE
@@ -297,6 +429,9 @@ public:
 #ifndef TMC_INTERPOLATE
 #define TMC_INTERPOLATE true
 #endif
+#ifndef TMC_INTERNAL_RSENSE
+#define TMC_INTERNAL_RSENSE false
+#endif
 #ifndef TMC_HOLD_MULTIPLIER
 #define TMC_HOLD_MULTIPLIER 0.5
 #endif
@@ -319,7 +454,25 @@ public:
 #define STORE_MOTOR_STALL_SENSITIVITY 1
 #endif
 
-extern ServoInterface* servos[NUM_SERVOS];
+#ifndef DEFAULT_TONE_VOLUME
+#define DEFAULT_TONE_VOLUME 100
+#endif
+
+#ifndef MINIMUM_TONE_VOLUME
+#define MINIMUM_TONE_VOLUME 5
+#endif
+
+#ifndef NUM_BEEPERS
+#define NUM_BEEPERS 0
+#define BEEPER_LIST \
+    { }
+#endif
+
+extern ServoInterface* servos[];
+
+#ifndef SAFE_HOMING
+#define SAFE_HOMING 1
+#endif
 
 #ifndef LAZY_DUAL_X_AXIS
 #define LAZY_DUAL_X_AXIS 0
@@ -335,6 +488,10 @@ extern ServoInterface* servos[NUM_SERVOS];
 #define MOVE_Z_WHEN_HOMED 0
 #endif
 
+#ifndef PARK_POSITION_Z_UP_FIRST
+#define PARK_POSITION_Z_UP_FIRST 0
+#endif
+
 #ifndef MAX_JERK_DISTANCE
 #define MAX_JERK_DISTANCE 0.6
 #endif
@@ -343,8 +500,16 @@ extern ServoInterface* servos[NUM_SERVOS];
 #define JSON_OUTPUT 0
 #endif
 
-#if !defined(ZPROBE_MIN_TEMPERATURE) && defined(ZHOME_MIN_TEMPERATURE)
-#define ZPROBE_MIN_TEMPERATURE ZHOME_MIN_TEMPERATURE
+#ifndef Z_PROBE_PAUSE_HEATERS
+#define Z_PROBE_PAUSE_HEATERS 0
+#endif
+
+#ifndef Z_PROBE_PAUSE_BED_REHEAT_TEMP
+#define Z_PROBE_PAUSE_BED_REHEAT_TEMP 5
+#endif
+
+#ifndef Z_PROBE_BLTOUCH_DEPLOY_DELAY
+#define Z_PROBE_BLTOUCH_DEPLOY_DELAY 1000
 #endif
 
 #ifndef MAX_ROOM_TEMPERATURE
@@ -356,20 +521,6 @@ extern ServoInterface* servos[NUM_SERVOS];
 #ifndef ZHOME_Y_POS
 #define ZHOME_Y_POS IGNORE_COORDINATE
 #endif
-
-// MS1 MS2 Stepper Driver Micro stepping mode table
-#define MICROSTEP1 LOW, LOW
-#define MICROSTEP2 HIGH, LOW
-#define MICROSTEP4 LOW, HIGH
-#define MICROSTEP8 HIGH, HIGH
-#if (MOTHERBOARD == 501) || MOTHERBOARD == 502
-#define MICROSTEP16 LOW, LOW
-#else
-#define MICROSTEP16 HIGH, HIGH
-#endif
-#define MICROSTEP32 HIGH, HIGH
-
-#define GCODE_BUFFER_SIZE 1
 
 #if !defined(Z_PROBE_REPETITIONS) || Z_PROBE_REPETITIONS < 1
 #define Z_PROBE_SWITCHING_DISTANCE 0.5 // Distance to safely untrigger probe
@@ -391,8 +542,31 @@ extern ServoInterface* servos[NUM_SERVOS];
 #else
 #define EXTRUDER_JAM_CONTROL 0
 #endif
-#ifndef JAM_METHOD
-#define JAM_METHOD 1
+
+// Firmware retraction settings
+#ifndef AUTORETRACT_ENABLED
+#define AUTORETRACT_ENABLED 0
+#endif
+#ifndef RETRACTION_LENGTH
+#define RETRACTION_LENGTH 0.0
+#endif
+#ifndef RETRACTION_SPEED
+#define RETRACTION_SPEED 0
+#endif
+#ifndef RETRACTION_UNDO_SPEED
+#define RETRACTION_UNDO_SPEED 0
+#endif
+#ifndef RETRACTION_Z_LIFT
+#define RETRACTION_Z_LIFT 0.0
+#endif
+#ifndef RETRACTION_UNDO_EXTRA_LENGTH
+#define RETRACTION_UNDO_EXTRA_LENGTH 0.0
+#endif
+#ifndef RETRACTION_UNDO_EXTRA_LONG_LENGTH
+#define RETRACTION_UNDO_EXTRA_LONG_LENGTH 0.0
+#endif
+#ifndef RETRACTION_LONG_LENGTH
+#define RETRACTION_LONG_LENGTH 0.0
 #endif
 
 #ifndef DEBUG_FREE_MEMORY
@@ -404,38 +578,6 @@ extern ServoInterface* servos[NUM_SERVOS];
 #ifndef KEEP_ALIVE_INTERVAL
 #define KEEP_ALIVE_INTERVAL 2000
 #endif
-
-#ifndef MAX_VFAT_ENTRIES
-#ifdef AVR_BOARD
-#define MAX_VFAT_ENTRIES (2)
-#else
-#define MAX_VFAT_ENTRIES (3)
-#endif
-#endif
-
-/** Total size of the buffer used to store the long filenames */
-#define LONG_FILENAME_LENGTH (13 * MAX_VFAT_ENTRIES + 1)
-#define SD_MAX_FOLDER_DEPTH 2
-
-#if UI_DISPLAY_TYPE != DISPLAY_U8G
-#if (defined(USER_KEY1_PIN) && (USER_KEY1_PIN == UI_DISPLAY_D5_PIN || USER_KEY1_PIN == UI_DISPLAY_D6_PIN || USER_KEY1_PIN == UI_DISPLAY_D7_PIN)) || (defined(USER_KEY2_PIN) && (USER_KEY2_PIN == UI_DISPLAY_D5_PIN || USER_KEY2_PIN == UI_DISPLAY_D6_PIN || USER_KEY2_PIN == UI_DISPLAY_D7_PIN)) || (defined(USER_KEY3_PIN) && (USER_KEY3_PIN == UI_DISPLAY_D5_PIN || USER_KEY3_PIN == UI_DISPLAY_D6_PIN || USER_KEY3_PIN == UI_DISPLAY_D7_PIN)) || (defined(USER_KEY4_PIN) && (USER_KEY4_PIN == UI_DISPLAY_D5_PIN || USER_KEY4_PIN == UI_DISPLAY_D6_PIN || USER_KEY4_PIN == UI_DISPLAY_D7_PIN))
-#error You cannot use DISPLAY_D5_PIN, DISPLAY_D6_PIN or DISPLAY_D7_PIN for "User Keys" with character LCD display
-#endif
-#endif
-
-#ifndef SDCARDDETECT
-#define SDCARDDETECT -1
-#endif
-
-#ifndef SDSUPPORT
-#define SDSUPPORT 0
-#endif
-
-#if SDSUPPORT
-#include "SdFat/SdFat.h"
-#endif
-
-#include "communication/gcode.h"
 
 #undef min
 #undef max
@@ -456,13 +598,10 @@ struct FanController {
 };
 
 extern FanController fans[];
-// extern const uint8 osAnalogInputChannels[] PROGMEM;
-//extern uint8 osAnalogInputCounter[ANALOG_INPUTS];
-//extern uint osAnalogInputBuildup[ANALOG_INPUTS];
-//extern uint8 osAnalogInputPos; // Current sampling position
-//#if ANALOG_INPUTS > 0
-//extern volatile uint osAnalogInputValues[ANALOG_INPUTS];
-//#endif
+
+extern const char* const motorNames[] PROGMEM;
+
+extern BeeperSourceBase* beepers[];
 
 extern millis_t previousMillisCmd;
 extern millis_t maxInactiveTime;
@@ -497,79 +636,9 @@ extern void writeMonitor();
 
 extern char tempLongFilename[LONG_FILENAME_LENGTH + 1];
 extern char fullName[LONG_FILENAME_LENGTH * SD_MAX_FOLDER_DEPTH + SD_MAX_FOLDER_DEPTH + 1];
+
 #if SDSUPPORT
-#define SHORT_FILENAME_LENGTH 14
-
-enum LsAction { LS_SerialPrint,
-                LS_Count,
-                LS_GetFilename };
-class SDCard {
-public:
-#if ENABLE_SOFTWARE_SPI_CLASS
-    SdFatSoftSpi<SD_SOFT_MISO_PIN, SD_SOFT_MOSI_PIN, SD_SOFT_SCK_PIN> fat;
-#else
-    SdFat fat;
-#endif
-    //Sd2Card card; // ~14 Byte
-    //SdVolume volume;
-    //SdFile root;
-    //SdFile dir[SD_MAX_FOLDER_DEPTH+1];
-    SdFile file;
-#if JSON_OUTPUT
-    GCodeFileInfo fileInfo;
-#endif
-    uint32_t filesize;
-    uint32_t sdpos;
-    //char fullName[13*SD_MAX_FOLDER_DEPTH+13]; // Fill name
-    // char* shortname; // Pointer to start of filename itself
-    // char* pathend;   // File to char where pathname in fullname ends
-    uint8_t sdmode; // 1 if we are printing from sd card, 2 = stop accepting new commands
-    bool sdactive;
-    //int16_t n;
-    bool savetosd;
-    SdBaseFile parentFound;
-
-    SDCard();
-    void initsd();
-    void writeCommand(GCode* code);
-    bool selectFile(const char* filename, bool silent = false);
-    void mount();
-    void unmount();
-    void startPrint();
-    void pausePrint(bool intern = false);
-    void pausePrintPart2();
-    void continuePrint(bool intern = false);
-    void stopPrint();
-    void stopPrintPart2();
-    inline void setIndex(uint32_t newpos) {
-        if (!sdactive)
-            return;
-        sdpos = newpos;
-        file.seekSet(sdpos);
-    }
-    void printStatus();
-    void ls();
-#if JSON_OUTPUT
-    void lsJSON(const char* filename);
-    void JSONFileInfo(const char* filename);
-    static void printEscapeChars(const char* s);
-#endif
-    void startWrite(char* filename);
-    void deleteFile(char* filename);
-    void finishWrite();
-    char* createFilename(char* buffer, const dir_t& p);
-    void makeDirectory(char* filename);
-    bool showFilename(const uint8_t* name);
-    void automount();
-#ifdef GLENN_DEBUG
-    void writeToFile();
-#endif
-private:
-    uint8_t lsRecursive(SdBaseFile* parent, uint8_t level, char* findFilename);
-    // SdFile *getDirectory(char* name);
-};
-
-extern SDCard sd;
+#include "sdcard/SDCard.h"
 #endif
 
 extern volatile int waitRelax; // Delay filament relax at the end of print, could be a simple timeout
@@ -581,6 +650,10 @@ extern int debugWaitLoop;
 
 #include "communication/Commands.h"
 #include "communication/Eeprom.h"
+
+#if SDSUPPORT
+#include "communication/CSVParser.h"
+#endif
 
 #if CPU_ARCH == ARCH_AVR
 #define DELAY1MICROSECOND __asm__("nop\n\t" \
@@ -614,6 +687,7 @@ extern int debugWaitLoop;
 #include "motion/Drivers.h"
 #include "utilities/PlaneBuilder.h"
 #include "drivers/zprobe.h"
+#include "utilities/RVector3.h"
 
 #include "Events.h"
 #include "custom/customEvents.h"

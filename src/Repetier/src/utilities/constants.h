@@ -21,6 +21,39 @@
 
 #pragma once
 
+// Arduino Mega 2560 based
+#define MOTHERBOARD_RAMPS_1_2 3
+#define MOTHERBOARD_RAMPS_1_4 33
+#define MOTHERBOARD_AZTEEG_X3 34
+#define MOTHERBOARD_AZTEEG_X3_PRO 35
+#define MOTHERBOARD_MPX3 38
+#define MOTHERBOARD_ULTIMAKER_SHIELD_1_5_7 37
+// 3Drag/Velleman K8200       = 66 (experimental)
+// Open Motion Controller     = 91
+// for correct HEATER_1_PIN assignment! Azteeg X1                  = 65
+// 3Drag/Velleman K8200 (experimental) = 66
+// Sethi 3D_1                 = 72
+// Foltyn 3D Master           = 12
+// Fysetc F6                  = 190
+// MegaTronics 1.0            = 70
+// Megatronics 2.0            = 701
+// Megatronics 3.0            = 703 // Thermistors predefined not thermocouples
+// Minitronics 1.0            = 702
+#define MOTHERBOARD_RUMBA 80
+// FELIXprinters              = 101
+#define MOTHERBOARD_RAMBO 301
+#define MOTHERBOARD_RAMBO_EINSY 310
+// PiBot for Repetier V1.0-1.3= 314
+// PiBot for Repetier V1.4    = 315
+// PiBot Controller V2.0      = 316
+// Sanguish Beta              = 501
+// Unique One rev. A          = 88
+// SAV MK1                    = 89
+// MJRice Pica Rev B          = 183
+// MJRice Pica Rev C          = 184
+#define ZONESTAR_ZRIB_2_1 39
+
+// Arduino DUE based
 #define MOTHERBOARD_RADDS 402
 #define MOTHERBOARD_RAMPS_FD_INVERTED_HEATER 403
 #define MOTHERBOARD_RAMPS_FD 404
@@ -48,8 +81,13 @@
 // M0/SAMD21 based boards
 #define MOTHERBOARD_MINITRONICS_2_0 2000
 
+// STM32F1 based boards
+#define MOTHERBOARD_E3_MINI_V1_2 2500
+#define MOTHERBOARD_E3_MINI_V2_0 2501
+
 // STM32F4 based boards (3000 - 3499)
 #define MOTHERBOARD_RUMBA32 3000
+#define MOTHERBOARD_STACKER3D_SUPER_MINI 3001
 
 #define NO_CONTROLLER 0
 #define CONTROLLER_NONE 0
@@ -83,6 +121,7 @@
 #define CONTROLLER_AZSMZ_12864 26
 #define CONTROLLER_REPRAPWORLD_GLCD 27
 #define CONTROLLER_AZSMZ_12864_OLED 28
+#define CONTROLLER_ENDER_3_12864 29
 
 #define PRINTER_TYPE_CARTESIAN 0
 #define PRINTER_TYPE_CORE_XYZ 1
@@ -108,7 +147,7 @@
 #define IO_TARGET_RESTORE_FROM_CONFIG 10
 #define IO_TARGET_ANALOG_INPUT_LOOP 11
 #define IO_TARGET_500MS 12
-#define IO_TARGET_TOOLS_TEMPLATES 13
+#define IO_TARGET_TEMPLATES 13
 #define IO_TARGET_FIRMWARE_EVENTS 14
 #define IO_TARGET_PERIODICAL_ACTIONS 15
 #define IO_TARGET_GUI_CONTROLS 16
@@ -119,6 +158,8 @@
 #define IO_TARGET_STORE_RECOVER_DATA 21
 #define IO_TARGET_RESTORE_RECOVER_DATA 22
 #define IO_TARGET_INIT_LATE 23
+#define IO_TARGET_BEEPER_LOOP 24
+#define IO_TARGET_SERVO_INTERRUPT 25
 
 #define NO_PIN -1
 
@@ -174,3 +215,4 @@
 #define XSTR(s) STR(s)
 
 typedef unsigned int uint;
+typedef void (*void_fn_t)();

@@ -30,7 +30,8 @@ public:
 
     static void transform(float pos[NUM_AXES], int32_t motor[NUM_AXES]);
 
-    static void homeAxis(fast8_t axis);
+    static void prepareHoming(fast8_t& axes) { }
+    static bool homeAxis(fast8_t axis);
 
     static bool positionAllowed(float pos[NUM_AXES], float zOfficial);
     static void closestAllowedPositionWithNewXYOffset(float pos[NUM_AXES], float offX, float offY, float safety);
@@ -43,7 +44,7 @@ public:
     static float feedrateForMoveSteps(fast8_t axes);
     static void deactivatedTool(fast8_t id);
     static void activatedTool(fast8_t id);
-    static void toolchangeFinished() {}
+    static void toolchangeFinished() { }
     static void eepromHandle();
     static void restoreFromConfiguration();
     static void init();
@@ -61,6 +62,8 @@ public:
     static bool canSelectTool(fast8_t toolId);
     static void M290(GCode* com);
     static void M360();
+    static bool runMCode(GCode* com);
+    static bool runGCode(GCode* com);
     static PGM_P getGeometryName();
 };
 #define MACHINE_TYPE "Core_XYZ"

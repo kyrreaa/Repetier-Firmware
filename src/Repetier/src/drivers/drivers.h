@@ -23,6 +23,8 @@
 class PWMHandler {
 public:
     virtual void set(fast8_t pwm) = 0;
+    virtual void setFreq(uint32_t freq) = 0;
+    virtual uint32_t getFreq() = 0;
     virtual fast8_t get() = 0;
 };
 
@@ -35,7 +37,6 @@ public:
 extern void motorEndstopTriggered(fast8_t axis, bool dir);
 extern void endstopTriggered(fast8_t axis, bool dir);
 
-#include "communication/Communication.h"
 #include "endstops.h"
 #include "stepper.h"
 #include "heatManager.h"

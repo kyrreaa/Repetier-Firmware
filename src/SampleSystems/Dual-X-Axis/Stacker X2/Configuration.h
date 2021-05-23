@@ -25,7 +25,7 @@ Early stage version for Stacke X2 printer - use with care
 #define CONFIGURATION_H
 
 // Short version has z max 300, long version 610 mm
-#define STACKER_SHORT 1
+#define STACKER_SHORT 0
 
 /**************** READ FIRST ************************
 
@@ -57,32 +57,32 @@ Early stage version for Stacke X2 printer - use with care
 #define BLUETOOTH_SERIAL 101
 #define JSON_OUTPUT 1
 #define FEATURE_SERVO 0
-#define FEATURE_WATCHDOG 1
+#define FEATURE_WATCHDOG 0
 #define FEATURE_Z_PROBE 0
 #define FEATURE_RETRACTION 1
 #define USE_ADVANCE 1
-#define NUM_AXES 5                   // X,Y,Z and E for extruder A,B,C would be 5,6,7
-#define STEPPER_FREQUENCY 120000     // Maximum stepper frequency.
-#define PREPARE_FREQUENCY 2000       // Update frequency for new blocks. Must be higher then PREPARE_FREQUENCY.
-#define BLOCK_FREQUENCY 1000         // Number of blocks with constant stepper rate per second.
-#define VELOCITY_PROFILE 2           // 0 = linear, 1 = cubic, 2 = quintic velocity shape
-#define SLOW_DIRECTION_CHANGE 1      // can be reason for lost steps on slow drivers
-#define SMALL_SEGMENT_SIZE 0.4       // Smaller segments reduce join speed to prevent vibrations causing lost steps
-#define Z_SPEED 8                    // Z positioning speed
-#define XY_SPEED 200                 // XY positioning speed for normal operations
-#define G0_FEEDRATE 0                // Speed for G0 moves. Independent from set F value! Set 0 to use F value.
-#define A_SPEED 150                  // Second X axis
-#define MAX_ROOM_TEMPERATURE 25      // No heating below this temperature!
-#define TEMPERATURE_CONTROL_RANGE 20 // Start with controlling if temperature is +/- this value to target temperature
-#define Z_PROBE_TYPE 0               // 0 = no z probe, 1 = default z probe, 2 = Nozzle as probe
-#define Z_PROBE_BORDER 2             // Safety border to ensure position is allowed
-#define Z_PROBE_TEMPERATURE 170      // Temperature for type 2
+#define NUM_AXES 5                     // X,Y,Z and E for extruder A,B,C would be 5,6,7
+#define STEPPER_FREQUENCY 120000       // Maximum stepper frequency.
+#define PREPARE_FREQUENCY 2000         // Update frequency for new blocks. Must be higher then PREPARE_FREQUENCY.
+#define BLOCK_FREQUENCY 1000           // Number of blocks with constant stepper rate per second.
+#define VELOCITY_PROFILE 2             // 0 = linear, 1 = cubic, 2 = quintic velocity shape
+#define SLOW_DIRECTION_CHANGE 1        // can be reason for lost steps on slow drivers
+#define SMALL_SEGMENT_SIZE 0.4         // Smaller segments reduce join speed to prevent vibrations causing lost steps
+#define Z_SPEED 8                      // Z positioning speed
+#define XY_SPEED 200                   // XY positioning speed for normal operations
+#define G0_FEEDRATE 0                  // Speed for G0 moves. Independent from set F value! Set 0 to use F value.
+#define A_SPEED 150                    // Second X axis
+#define MAX_ROOM_TEMPERATURE 25        // No heating below this temperature!
+#define TEMPERATURE_CONTROL_RANGE 20   // Start with controlling if temperature is +/- this value to target temperature
+#define Z_PROBE_TYPE Z_PROBE_TYPE_NONE // 0 = no z probe, 1 = default z probe, 2 = Nozzle as probe
+#define Z_PROBE_BORDER 2               // Safety border to ensure position is allowed
+#define Z_PROBE_TEMPERATURE 170        // Temperature for type 2
 
 // 0 = Cartesian, 1 = CoreXYZ, 2 = delta, 3 = Dual X-Axis
 #define PRINTER_TYPE PRINTER_TYPE_DUAL_X
 // steps to include as babysteps per 1/BLOCK_FREQUENCY seconds. Must be lower then STEPPER_FREQUENCY/BLOCK_FREQUENCY and be low enough to not loose steps.
 #define BABYSTEPS_PER_BLOCK \
-    { 1, 1, 1 }
+    { 1, 1, 1, 1, 1 }
 // If all axis end stops are hardware based we can skip the time consuming tests each step
 #define NO_SOFTWARE_AXIS_ENDSTOPS
 // Normally only a delta has motor end stops required. Normally you trigger using axis endstops.
@@ -98,6 +98,8 @@ Early stage version for Stacke X2 printer - use with care
 // Encoder speed 0 = fastest, 1 or 2 = slowest - set so 1 click is one menu move
 // Default is 2 if not set by controller. Us eonly to fix wrong setting
 // #define ENCODER_SPEED 2
+// Set 1 if you want to replace the default themes and define them in configuration_io.h
+#define CUSTOM_DEFAULT_THEMES 0
 
 /* Ratios for core xyz. First index denotes motor and second axis.
 For each motor you can set the ratio of x,y,z position that adds
@@ -182,7 +184,6 @@ to the position. 0 = no contribution. */
 
 // Define ZProbe by referencing a endstop defined
 CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, ZPROBE_ADDRESS)
-
 /** Axes are homed in order of priority (0..10) if homing direction is not 0. */
 #define X_HOME_PRIORITY 0
 #define Y_HOME_PRIORITY 1
@@ -201,10 +202,10 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, ZPROBE_ADDRESS)
 
 #define NUM_HEATED_CHAMBERS 0
 #define HEATED_CHAMBER_LIST \
-    {}
+    { }
 
 #define SERVO_LIST \
-    {}
+    { }
 #define TOOLS \
     { &ToolExtruder1, &ToolExtruder2 }
 
@@ -222,6 +223,17 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, ZPROBE_ADDRESS)
     { &XMotor, &YMotor, &ZMotor, &AMotor, &E1Motor, &E2Motor }
 #define MOTOR_NAMES \
     { PSTR("X left"), PSTR("Y"), PSTR("Z"), PSTR("X right"), PSTR("E0"), PSTR("E1") }
+
+// Define beeper list
+#if BEEPER_PIN > -1
+#define NUM_BEEPERS 1
+#define BEEPER_LIST \
+    { &MainBeeper }
+#else
+#define NUM_BEEPERS 0
+#define BEEPER_LIST \
+    { }
+#endif
 
 // Some common settings for trinamic driver settings
 /**
@@ -256,7 +268,7 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, ZPROBE_ADDRESS)
 #if STACKER_SHORT
 #define Z_MAX_LENGTH 300
 #else
-define Z_MAX_LENGTH 610
+#define Z_MAX_LENGTH 610
 #endif
 
 #define A_MAX_LENGTH 450
@@ -299,7 +311,7 @@ define Z_MAX_LENGTH 610
 #define ZAXIS_STEPS_PER_MM 404.18
 #define MAX_FEEDRATE_X 400
 #define MAX_FEEDRATE_Y 250
-#define MAX_FEEDRATE_Z 10
+#define MAX_FEEDRATE_Z 8
 #define MAX_FEEDRATE_A 400
 
 //#define EXTERNALSERIAL  use Arduino serial library instead of build in. Requires more ram, has only 63 byte input buffer.
@@ -398,8 +410,6 @@ define Z_MAX_LENGTH 610
 // ##                           Movement settings                                          ##
 // ##########################################################################################
 
-#define FEATURE_BABYSTEPPING 1
-
 // Delta settings
 #define DELTA_HOME_ON_POWER 0
 
@@ -413,7 +423,9 @@ define Z_MAX_LENGTH 610
 #define MAX_JERK 10
 #define MAX_ZJERK 0
 #define MAX_AJERK 10
-#define PRINTLINE_CACHE_SIZE 32
+#define PRINTLINE_CACHE_SIZE 32    // Max. number of buffered moves
+#define MIN_PRINTLINE_FILL 8       // Min. number of moves we want to buffer even if length is > MAX_BUFFERED_LENGTH_MM
+#define MAX_BUFFERED_LENGTH_MM 200 // Max. length of moves we want to buffer
 
 // ################# Misc. settings ##################
 

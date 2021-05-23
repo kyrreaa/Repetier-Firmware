@@ -18,6 +18,12 @@
 
 // Additional informations: https://github.com/Aus3D/RUMBA32
 /*
+
+The Current (may 2020) MKS-Rumba32 and Aus3d RUMBA32 boards have a defect making
+spi controlled TMC drivers not work properly. See
+https://github.com/makerbase-mks/MKS-RUMBA32/wiki/About-RUMBA32-TMC-SPI-%22CONNECTION-ERROR%22-FAQ
+for a solution.
+
 STM32F446 processor, 180MHz, 512kb flash, 128kb RAM
 
 EXP1 and EXP2 are rotated 180° compared to Smart Graphics Controller pins, so rotate cable accordingly
@@ -41,6 +47,12 @@ EXP3:
 Header pins top:      13      11       9       7       5         3        1
 Header pins bottom:   14      12       10      8       6         4        2
                      PD12  PA10(RX1)  (SDA)   PA3   PD15(PWM2)  GND       5V
+
+For a second serial connection add
+-DHAVE_HWSERIAL1
+to the build flags in platformio.ini.
+In configration.h set BLUETOOTH_SERIAL 1
+This makes EXP3 pin 11/12 also a serial as described in pin header above.
 
 */
 #pragma once
@@ -94,14 +106,14 @@ Header pins bottom:   14      12       10      8       6         4        2
 #define ORIG_E2_CS_PIN PD1
 
 // Temperature Sensors
-#define TEMP_0_PIN PC4 // T0
-#define TEMP_2_PIN PC3 // T1
-#define TEMP_3_PIN PC2 // T2
-#define TEMP_4_PIN PC1 // T3
-#define TEMP_1_PIN PC0 // TB bed
+#define TEMP_0_PIN static_cast<int>(PC_4) // T0
+#define TEMP_2_PIN static_cast<int>(PC_3) // T1
+#define TEMP_3_PIN static_cast<int>(PC_2) // T2
+#define TEMP_4_PIN static_cast<int>(PC_1) // T3
+#define TEMP_1_PIN static_cast<int>(PC_0) // TB bed
 
-#define THERMOCOUPLE_0_PIN PA3 // A10 on EXP3
-#define THERMOCOUPLE_1_PIN PA4 // A9 on EXP3
+#define THERMOCOUPLE_0_PIN static_cast<int>(PA_3) // A10 on EXP3
+#define THERMOCOUPLE_1_PIN static_cast<int>(PA_4) // A9 on EXP3
 
 // Heaters / Fans
 #define HEATER_0_PIN PC6 // E0 Timer 3 Channel 1
@@ -133,7 +145,7 @@ Header pins bottom:   14      12       10      8       6         4        2
 #define EEPROM_AVAILABLE EEPROM_FLASH
 #endif
 
-// I2C
+// SPI
 #define SCK_PIN PA5
 #define MISO_PIN PA6
 #define MOSI_PIN PA7

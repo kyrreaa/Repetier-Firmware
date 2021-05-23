@@ -31,6 +31,7 @@
 #define EEPROM_SIGNATURE_CARTESIAN 10
 #define EEPROM_SIGNATURE_GRID_LEVELING 11
 #define EEPROM_SIGNATURE_STEPPER 12
+#define EEPROM_SIGNATURE_GUI 13
 
 #define EPR_MAGIC_BYTE 0
 #define EPR_INTEGRITY_BYTE 1         // Here the xored sum over eeprom is stored
@@ -44,7 +45,7 @@
 #define EPR_BAUDRATE2 24             // Connection baudrate for second connector
 #define EPR_SELECTED_LANGUAGE 25     // Active language
 #define EPR_VERSION 26               // Version id for updates in EEPROM storage
-#define EPR_TONES_ENABLED 27         // Tones/sounds currently enabled
+#define EPR_TONE_VOLUME 27           // Tone volume, off if 0.
 #define EEPROM_PROTOCOL_VERSION 1    // Protocol version
 
 #define EPR_START_RESERVE 40
@@ -61,6 +62,13 @@ enum class EEPROMType {
     LONG = 2,
     INT = 3,
     BYTE = 4
+};
+
+enum class EEPROMMode {
+    REPORT = 0,
+    SET_VAR = 1,
+    STORE = 2,
+    READ = 3
 };
 
 class EEPROM {
@@ -82,12 +90,13 @@ class EEPROM {
     static void updateChecksum();
 
 public:
-    static fast8_t mode; // 0 = output, 1 = set var, 2 = store to eeprom, 3 = read from eeprom
+    static EEPROMMode mode;
 
     static void setSilent(bool s) { silent = s; }
     static void init();
     static void markChanged();
     static void initBaudrate();
+    static void setBaudrate(int32_t val);
     static void updateDerived();
     static void timerHandler(); // gets aclled every 100ms
     /** Reserve memory in eeprom to store data. sig and version
@@ -108,6 +117,7 @@ public:
     static void handleLong(uint pos, PGM_P text, int32_t& var);
     static void handleLong(uint pos, PGM_P text, uint32_t& var);
     static void handleInt(uint pos, PGM_P text, int16_t& var);
+    static void handleInt(uint pos, PGM_P text, uint16_t& var);
     static void handleByte(uint pos, PGM_P text, uint8_t& var);
     static void handleByte(uint pos, PGM_P text, int8_t& var);
     static void handleByte(uint pos, PGM_P text, int32_t& var);

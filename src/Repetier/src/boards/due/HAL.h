@@ -32,18 +32,24 @@
 
 // You can set different sizes if you want, but with binary mode it does not get faster
 #ifndef SERIAL_RX_BUFFER_SIZE
+#ifdef SERIAL_BUFFER_SIZE
+#define SERIAL_RX_BUFFER_SIZE SERIAL_BUFFER_SIZE
+#else
 #define SERIAL_RX_BUFFER_SIZE 128
+#endif
 #endif
 
 #ifndef HAL_H
 #define HAL_H
-
+#define INLINE __attribute__((always_inline))
 #define USE_ARDUINO_SPI_LIB
 
+#include "RepetierSerialUSB.h"
 #include <inttypes.h>
 #include "pins.h"
 #include "Print.h"
 #include "fastio.h"
+#include "usb/usb_task.h"
 
 // Which I2C port to use?
 #ifndef WIRE_PORT
@@ -68,8 +74,6 @@
 
 // Some structures assume no padding, need to add this attribute on ARM
 #define PACK __attribute__((packed))
-
-#define INLINE __attribute__((always_inline))
 
 // do not use program space memory with Due
 #define PROGMEM
@@ -101,10 +105,20 @@ typedef char prog_char;
 #define FSTRINGVAR(var) static const char var[] PROGMEM;
 #define FSTRINGPARAM(var) PGM_P var
 
+#define PWM_CLOCK_FREQ 10000
+#define PWM_COUNTER_100MS PWM_CLOCK_FREQ / 10
+
+// Manipulate the SAM3X8E's real time timer for motion2
+// instead of using a valuable PWM-capable timer
+// Only really good for < 8000Hz
+#define MOTION2_USE_REALTIME_TIMER 1
+#if (DISABLED(MOTION2_USE_REALTIME_TIMER) || PREPARE_FREQUENCY > (PWM_CLOCK_FREQ / 2))
 #define MOTION2_TIMER TC0
 #define MOTION2_TIMER_CHANNEL 0
 #define MOTION2_TIMER_IRQ ID_TC0
 #define MOTION2_TIMER_VECTOR TC0_Handler
+#endif
+
 #define PWM_TIMER TC0
 #define PWM_TIMER_CHANNEL 1
 #define PWM_TIMER_IRQ ID_TC1
@@ -130,13 +144,6 @@ typedef char prog_char;
 // TWI1 if SDA pin = 20  TWI0 for pin = 70
 #define TWI_INTERFACE TWI1
 #define TWI_ID ID_TWI1
-
-// #define PWM_CLOCK_FREQ          3906
-// #define PWM_COUNTER_100MS       390
-#define PWM_CLOCK_FREQ 10000
-#define PWM_COUNTER_100MS 1000
-//#define MOTION3_CLOCK_FREQ       244
-//#define MOTION3_PRESCALE         2
 
 #define SERVO_CLOCK_FREQ 1000
 #define SERVO_PRESCALE 2 // Using TCLOCK1 therefore 2
@@ -317,6 +324,8 @@ public:
     // as long as hal eeprom functions are used.
     static char virtualEeprom[EEPROM_BYTES];
     static bool wdPinged;
+    static uint8_t i2cError;
+    static BootReason startReason;
 
     HAL();
     virtual ~HAL();
@@ -328,10 +337,22 @@ public:
     static int initHardwarePWM(int pinNumber, uint32_t frequency);
     // Set pwm output to value. id is id from initHardwarePWM.
     static void setHardwarePWM(int id, int value);
+    // Set pwm frequency to value. id is id from initHardwarePWM.
+    static void setHardwareFrequency(int id, uint32_t frequency);
+
+    // Initalize hardware DAC control on dacPin if supported.
+    // Returns internal id if it succeeds or -1 if it fails.
+    static fast8_t initHardwareDAC(fast8_t dacPin);
+    // Set the DAC output to value. id is from initHardwareDAC.
+    static void setHardwareDAC(fast8_t id, fast8_t value);
+
     // do any hardware-specific initialization here
     static inline void hwSetup(void) {
+        updateStartReason();
 #if !FEATURE_WATCHDOG
         WDT_Disable(WDT); // Disable watchdog
+#else
+        WDT->WDT_MR |= WDT_MR_WDDBGHLT; // Disable watchdog when debugging only.
 #endif
 
 #if defined(TWI_CLOCK_FREQ) && TWI_CLOCK_FREQ > 0 //init i2c if we have a frequency
@@ -360,6 +381,15 @@ public:
 #if EEPROM_AVAILABLE == EEPROM_FLASH && EEPROM_MODE != EEPROM_NONE
         FEInit();
 #endif
+        trng_enable(TRNG);
+        randomSeed(trng_read_output_data(TRNG));
+        if (static_cast<Stream*>(&RFSERIAL) == &SerialUSB
+#if defined(BLUETOOTH_SERIAL) && BLUETOOTH_SERIAL > 0
+            || static_cast<Stream*>(&RFSERIAL2) == &SerialUSB
+#endif
+        ) { //Only init if serial is used!
+            usb_task_init();
+        }
     }
     static inline void digitalWrite(uint8_t pin, uint8_t value) {
         WRITE_VAR(pin, value);
@@ -370,8 +400,11 @@ public:
     static inline void pinMode(uint8_t pin, uint8_t mode) {
         if (mode == INPUT) {
             SET_INPUT(pin);
-        } else
+        } else if (mode == INPUT_PULLUP) {
+            PULLUP(pin, HIGH);
+        } else {
             SET_OUTPUT(pin);
+        }
     }
     static INLINE void delayMicroseconds(uint32_t usec) { //usec += 3;
         uint32_t n = usec * (F_CPU_TRUE / 3000000);
@@ -396,31 +429,8 @@ public:
 #endif
         }
     }
-    static inline void tone(int frequency) {
-#if BEEPER_PIN > -1
-        // set up timer counter 1 channel 0 to generate interrupts for
-        // toggling output pin.
-        SET_OUTPUT(BEEPER_PIN);
-        pmc_set_writeprotect(false);
-        pmc_enable_periph_clk((uint32_t)BEEPER_TIMER_IRQ);
-        // set interrupt to lowest possible priority
-        NVIC_SetPriority((IRQn_Type)BEEPER_TIMER_IRQ, NVIC_EncodePriority(4, 6, 3));
-        TC_Configure(BEEPER_TIMER, BEEPER_TIMER_CHANNEL, TC_CMR_WAVE | TC_CMR_WAVSEL_UP_RC | TC_CMR_TCCLKS_TIMER_CLOCK4); // TIMER_CLOCK4 -> 128 divisor
-        uint32_t rc = VARIANT_MCK / 128 / frequency;
-        TC_SetRA(BEEPER_TIMER, BEEPER_TIMER_CHANNEL, rc / 2); // 50% duty cycle
-        TC_SetRC(BEEPER_TIMER, BEEPER_TIMER_CHANNEL, rc);
-        TC_Start(BEEPER_TIMER, BEEPER_TIMER_CHANNEL);
-        BEEPER_TIMER->TC_CHANNEL[BEEPER_TIMER_CHANNEL].TC_IER = TC_IER_CPCS;
-        BEEPER_TIMER->TC_CHANNEL[BEEPER_TIMER_CHANNEL].TC_IDR = ~TC_IER_CPCS;
-        NVIC_EnableIRQ((IRQn_Type)BEEPER_TIMER_IRQ);
-#endif
-    }
-    static inline void noTone() {
-#if BEEPER_PIN > -1
-        TC_Stop(BEEPER_TIMER, 0);
-        WRITE_VAR(BEEPER_PIN, LOW);
-#endif
-    }
+    static void tone(uint32_t frequency);
+    static void noTone();
 
 #if EEPROM_AVAILABLE == EEPROM_SDCARD || EEPROM_AVAILABLE == EEPROM_FLASH
     static void syncEEPROM(); // store to disk if changed
@@ -549,13 +559,23 @@ public:
     static inline int16_t readFlashWord(PGM_P ptr) {
         return pgm_read_word(ptr);
     }
-
+    static inline const void* readFlashAddress(const void* adr) {
+        return (*((const void**)adr));
+    }
     static inline void serialSetBaudrate(long baud) {
+        static bool serialInitialized = false;
         Serial.setInterruptPriority(1);
+        if (serialInitialized && static_cast<Stream*>(&RFSERIAL) != &SerialUSB) { // When just updating the baudrate, don't restart USB.
+            RFSERIAL.end();
+        }
         RFSERIAL.begin(baud);
 #if defined(BLUETOOTH_SERIAL) && BLUETOOTH_SERIAL > 0
+        if (serialInitialized && static_cast<Stream*>(&RFSERIAL2) != &SerialUSB) { // When just updating the baudrate, don't restart USB.
+            RFSERIAL2.end();
+        }
         RFSERIAL2.begin(baud);
 #endif
+        serialInitialized = true;
     }
     static inline void serialFlush() {
         RFSERIAL.flush();
@@ -564,6 +584,8 @@ public:
 #endif
     }
     static void setupTimer();
+    static void handlePeriodical();
+    static void updateStartReason();
     static void showStartReason();
     static int getFreeRam();
     static void resetHardware();
@@ -572,7 +594,7 @@ public:
     static void spiBegin(uint32_t clock, uint8_t mode, uint8_t msbfirst);
     static uint8_t spiTransfer(uint8_t);
 #ifndef USE_ARDUINO_SPI_LIB
-    static void spiEnd() {}
+    static void spiEnd() { }
 #else
     static void spiEnd();
 #endif
@@ -692,7 +714,7 @@ public:
     static void i2cSetClockspeed(uint32_t clockSpeedHz);
     static void i2cInit(uint32_t clockSpeedHz);
     static void i2cStartRead(uint8_t address7bit, uint8_t bytes);
-    static void i2cStart(uint8_t address7bit);
+    // static void i2cStart(uint8_t address7bit);
     static void i2cStartAddr(uint8_t address7bit, unsigned int pos, uint8_t readBytes);
     static void i2cStop(void);
     static void i2cWrite(uint8_t data);
@@ -707,22 +729,20 @@ public:
         WDT->WDT_MR = WDT_MR_WDRSTEN | WATCHDOG_INTERVAL | (WATCHDOG_INTERVAL << 16);
         WDT->WDT_CR = 0xA5000001;
     };
-    inline static void stopWatchdog() {}
+    inline static void stopWatchdog() { }
     inline static void pingWatchdog() {
 #if FEATURE_WATCHDOG
         wdPinged = true;
 #endif
     };
 
-#if NUM_SERVOS > 0
     static unsigned int servoTimings[4];
     static void servoMicroseconds(uint8_t servo, int ms, uint16_t autoOff);
-#endif
 
     static void analogStart(void);
     static void analogEnable(int channel);
     static int analogRead(int channel) { return ADC->ADC_CDR[channel]; }
-    static void reportHALDebug() {}
+    static void reportHALDebug() { }
     static volatile uint8_t insideTimer1;
     static void switchToBootMode();
 };

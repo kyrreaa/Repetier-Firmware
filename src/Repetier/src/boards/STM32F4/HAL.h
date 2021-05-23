@@ -37,7 +37,9 @@
 #include "pins.h"
 #include "Print.h"
 #include "fastio.h"
+#if FEATURE_WATCHDOG
 #include <IWatchdog.h>
+#endif
 
 // Which I2C port to use?
 #ifndef WIRE_PORT
@@ -89,6 +91,8 @@ typedef char prog_char;
 #ifndef MOTION2_TIMER_NUM
 #define MOTION2_TIMER_NUM 6
 #endif
+// Beware! On STM32F4's, TIM10's IRQHandler is shared with TIM1's!
+// Both timers will interrupt with the same function!
 #ifndef PWM_TIMER_NUM
 #define PWM_TIMER_NUM 10
 #endif
@@ -106,8 +110,8 @@ typedef char prog_char;
 // for host autoconfiguration
 #define SERIAL_BUFFER_SIZE SERIAL_RX_BUFFER_SIZE
 
-#define PWM_CLOCK_FREQ 5000
-#define PWM_COUNTER_100MS 500
+#define PWM_CLOCK_FREQ 10000
+#define PWM_COUNTER_100MS 1000
 
 // #define MAX_ANALOG_INPUTS 16 // gets already set in pins_arduino.h
 
@@ -263,6 +267,8 @@ public:
     // as long as hal eeprom functions are used.
     static char virtualEeprom[EEPROM_BYTES];
     static bool wdPinged;
+    static uint8_t i2cError;
+    static BootReason startReason;
 
     HAL();
     virtual ~HAL();
@@ -274,6 +280,13 @@ public:
     static int initHardwarePWM(int pinNumber, uint32_t frequency);
     // Set pwm output to value. id is id from initHardwarePWM.
     static void setHardwarePWM(int id, int value);
+    // Set pwm frequency to value. id is id from initHardwarePWM.
+    static void setHardwareFrequency(int id, uint32_t frequency);
+    // Initalize hardware DAC control on dacPin if supported.
+    // Returns internal id if it succeeds or -1 if it fails.
+    static fast8_t initHardwareDAC(fast8_t dacPin);
+    // Set the DAC output to value. id is from initHardwareDAC.
+    static void setHardwareDAC(fast8_t id, fast8_t value);
     // do any hardware-specific initialization here
     static void hwSetup(void);
 
@@ -286,8 +299,11 @@ public:
     static inline void pinMode(uint8_t pin, uint8_t mode) {
         if (mode == INPUT) {
             SET_INPUT(pin);
-        } else
+        } else if (mode == INPUT_PULLUP) {
+            PULLUP(pin, HIGH);
+        } else {
             SET_OUTPUT(pin);
+        }
     }
     static INLINE void delayMicroseconds(uint32_t usec) { //usec += 3;
         ::delayMicroseconds(usec);
@@ -304,7 +320,7 @@ public:
 #endif
         }
     }
-    static void tone(int frequency);
+    static void tone(uint32_t frequency);
     static void noTone();
 
 #if EEPROM_AVAILABLE == EEPROM_SDCARD || EEPROM_AVAILABLE == EEPROM_FLASH
@@ -398,7 +414,7 @@ public:
         //__disable_irq();
     }
     static inline millis_t timeInMilliseconds() {
-        return millis();
+        return HAL_GetTick();
     }
     static inline char readFlashByte(PGM_P ptr) {
         return pgm_read_byte(ptr);
@@ -406,11 +422,21 @@ public:
     static inline int16_t readFlashWord(PGM_P ptr) {
         return pgm_read_word(ptr);
     }
-
+    static inline const void* readFlashAddress(const void* adr) {
+        return (*((const void**)adr));
+    }
     static inline void serialSetBaudrate(long baud) {
         // Serial.setInterruptPriority(1);
 #if defined(BLUETOOTH_SERIAL) && BLUETOOTH_SERIAL > 0
+        RFSERIAL2.end();
         RFSERIAL2.begin(baud);
+#endif
+#if defined(USBCON) && defined(USBD_USE_CDC)
+        if (static_cast<Stream*>(&RFSERIAL) != &SerialUSB) {
+            RFSERIAL.end();
+        }
+#else
+        RFSERIAL.end();
 #endif
         RFSERIAL.begin(baud);
     }
@@ -421,6 +447,8 @@ public:
         RFSERIAL.flush();
     }
     static void setupTimer();
+    static void handlePeriodical();
+    static void updateStartReason();
     static void showStartReason();
     static int getFreeRam();
     static void resetHardware();
@@ -434,7 +462,7 @@ public:
     static void i2cSetClockspeed(uint32_t clockSpeedHz);
     static void i2cInit(uint32_t clockSpeedHz);
     static void i2cStartRead(uint8_t address7bit, uint8_t bytes);
-    static void i2cStart(uint8_t address7bit);
+    // static void i2cStart(uint8_t address7bit);
     static void i2cStartAddr(uint8_t address7bit, unsigned int pos, uint8_t readBytes);
     static void i2cStop(void);
     static void i2cWrite(uint8_t data);
@@ -442,19 +470,19 @@ public:
 
     // Watchdog support
     inline static void startWatchdog() {
+#if FEATURE_WATCHDOG
         IWatchdog.begin(WATCHDOG_INTERVAL);
+#endif
     };
-    inline static void stopWatchdog() {}
+    inline static void stopWatchdog() { }
     inline static void pingWatchdog() {
 #if FEATURE_WATCHDOG
         wdPinged = true;
 #endif
     };
 
-#if NUM_SERVOS > 0
     static unsigned int servoTimings[4];
     static void servoMicroseconds(uint8_t servo, int ms, uint16_t autoOff);
-#endif
 
     static void analogStart(void);
     static int analogRead(int channel);

@@ -67,6 +67,8 @@
 #define Z_PROBE_TYPE 1        // 0 = no z probe, 1 = default z probe, 2 = Nozzle as probe
 #define Z_PROBE_BORDER 2      // Safety border to ensure position is allowed
 #define Z_PROBE_TEMPERATURE 0 // Temperature for type 2
+// Set 1 if you want to replace the default themes and define them in configuration_io.h
+#define CUSTOM_DEFAULT_THEMES 0
 
 // 0 = Cartesian, 1 = CoreXYZ, 2 = delta
 #define PRINTER_TYPE PRINTER_TYPE_DELTA
@@ -193,6 +195,16 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, ZPROBE_ADDRESS)
     { &XMotor, &YMotor, &ZMotor }
 #define MOTOR_NAMES \
     { PSTR("X"), PSTR("Y"), PSTR("Z") }
+// Define beeper list
+#if BEEPER_PIN > -1
+#define NUM_BEEPERS 1
+#define BEEPER_LIST \
+    { &MainBeeper }
+#else
+#define NUM_BEEPERS 0
+#define BEEPER_LIST \
+    { }
+#endif
 
 // Some common settings for trinamic driver settings
 /**
@@ -429,7 +441,7 @@ CONFIG_VARIABLE_EQ(EndstopDriver, *ZProbe, ZPROBE_ADDRESS)
 #define L_P2_Y 45
 #define L_P3_X 137
 #define L_P3_Y 210
-#define GRID_SIZE 5
+#define MAX_GRID_SIZE 5                   // Maximum grid size allocation in memory, imported grid can be smaller
 #define ENABLE_BUMP_CORRECTION 1          // CPU intensive, so only activate if required
 #define BUMP_CORRECTION_START_DEGRADE 0.5 // Until this height we correct 100%
 #define BUMP_CORRECTION_END_HEIGHT 2      // From this height on we do no correction

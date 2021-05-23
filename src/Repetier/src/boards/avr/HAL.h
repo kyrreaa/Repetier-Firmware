@@ -21,29 +21,26 @@
   Functions in this file are used to communicate using ascii or repetier protocol.
 */
 
-#ifndef HAL_H
-#define HAL_H
+#pragma once
 
 /**
   This is the main Hardware Abstraction Layer (HAL).
   To make the firmware work with different processors and tool chains,
   all hardware related code should be packed into the hal files.
+
+  Timer usage Mega 2560:
+  Timer 0: Time measurement, software pwm 
+  Timer 1: Motion3 Stepper interrupt
+  Timer 2: Motion2 Stepper interrupt
+  Timer 3: Servos
 */
 
 #include <avr/pgmspace.h>
 #include <avr/io.h>
 
 #define INLINE __attribute__((always_inline))
-
-#if CPU_ARCH == ARCH_AVR
+#define CPU_ARCH ARCH_AVR
 #include <avr/io.h>
-#else
-#define PROGMEM
-#define PGM_P const char*
-#define PSTR(s) s
-#define pgm_read_byte_near(x) (*(uint8_t*)x)
-#define pgm_read_byte(x) (*(uint8_t*)x)
-#endif
 
 #define PACK
 
@@ -55,42 +52,36 @@
 #include <avr/wdt.h>
 
 // Which I2C port to use?
+#ifndef NO_I2C
 #ifndef WIRE_PORT
 #define WIRE_PORT Wire
 #endif
+#else
+#undef WIRE_PORT
+#endif
+
+#define PWM_CLOCK_FREQ 3000
+#define PWM_COUNTER_100MS PWM_CLOCK_FREQ / 10
 
 #define ANALOG_PRESCALER _BV(ADPS0) | _BV(ADPS1) | _BV(ADPS2)
 #define MAX_ANALOG_INPUTS 16
 extern bool analogEnabled[MAX_ANALOG_INPUTS];
+extern uint16_t analogValues[MAX_ANALOG_INPUTS];
 
-#if MOTHERBOARD == 8 || MOTHERBOARD == 88 || MOTHERBOARD == 9 || MOTHERBOARD == 92 || CPU_ARCH != ARCH_AVR
-#define EXTERNALSERIAL
-#endif
-#if defined(BLUETOOTH_SERIAL) && BLUETOOTH_SERIAL > 0
-#undef EXTERNALSERIAL
-#define EXTERNALSERIAL
-#endif
-
-//#define EXTERNALSERIAL  // Force using Arduino serial
-#ifndef EXTERNALSERIAL
-#undef HardwareSerial_h
-#define HardwareSerial_h // Don't use standard serial console
-#endif
 #include <inttypes.h>
 #include "Stream.h"
-#ifdef EXTERNALSERIAL
+#ifndef SERIAL_RX_BUFFER_SIZE
 #define SERIAL_RX_BUFFER_SIZE 128
 #endif
-#include "Arduino.h"
-#include <Wire.h>
-#if CPU_ARCH == ARCH_AVR
-#include "fastio.h"
-#else
-#define READ(IO) digitalRead(IO)
-#define WRITE(IO, v) digitalWrite(IO, v)
-#define SET_INPUT(IO) pinMode(IO, INPUT)
-#define SET_OUTPUT(IO) pinMode(IO, OUTPUT)
+#ifndef SERIAL_TX_BUFFER_SIZE
+#define SERIAL_TX_BUFFER_SIZE 128
 #endif
+
+#include "Arduino.h"
+#if defined(WIRE_PORT)
+#include <Wire.h>
+#endif
+#include "fastio.h"
 #ifndef cbi
 #define cbi(sfr, bit) (_SFR_BYTE(sfr) &= ~_BV(bit))
 #endif
@@ -112,8 +103,9 @@ public:
 
     inline InterruptProtectedBlock(bool later = false) {
         sreg = SREG;
-        if (!later)
+        if (!later) {
             cli();
+        }
     }
 
     inline ~InterruptProtectedBlock() {
@@ -122,18 +114,11 @@ public:
 };
 
 #define SECONDS_TO_TICKS(s) (unsigned long)(s * (float)F_CPU)
-#define ANALOG_INPUT_SAMPLE 5
-// Bits of the ADC converter
-#define ANALOG_INPUT_BITS 10
-#define ANALOG_REDUCE_BITS 0
-#define ANALOG_REDUCE_FACTOR 1
 
 #define MAX_RAM 32767
 
 #define bit_clear(x, y) x &= ~(1 << y) //cbi(x,y)
 #define bit_set(x, y) x |= (1 << y)    //sbi(x,y)
-
-#if NONLINEAR_SYSTEM
 
 typedef uint16_t speed_t;
 typedef uint32_t ticks_t;
@@ -143,8 +128,7 @@ typedef int8_t fast8_t;
 typedef uint8_t ufast8_t;
 
 #define FAST_INTEGER_SQRT
-
-#ifndef EXTERNALSERIAL
+#define SERIAL_BUFFER_SIZE 128
 // Implement serial communication for one stream only!
 /*
   HardwareSerial.h - Hardware serial library for Wiring
@@ -169,23 +153,12 @@ typedef uint8_t ufast8_t;
   Modified to use only 1 queue with fixed length by Repetier
 */
 
-#define SERIAL_BUFFER_SIZE 128
-#define SERIAL_BUFFER_MASK 127
-#undef SERIAL_TX_BUFFER_SIZE
-#undef SERIAL_TX_BUFFER_MASK
-#ifdef BIG_OUTPUT_BUFFER
-#define SERIAL_TX_BUFFER_SIZE 128
-#define SERIAL_TX_BUFFER_MASK 127
-#else
-#define SERIAL_TX_BUFFER_SIZE 64
-#define SERIAL_TX_BUFFER_MASK 63
-#endif
-
 struct ring_buffer {
-    uint8_t buffer[SERIAL_BUFFER_SIZE];
+    uint8_t buffer[SERIAL_RX_BUFFER_SIZE];
     volatile uint8_t head;
     volatile uint8_t tail;
 };
+
 struct ring_buffer_tx {
     uint8_t buffer[SERIAL_TX_BUFFER_SIZE];
     volatile uint8_t head;
@@ -194,8 +167,8 @@ struct ring_buffer_tx {
 
 class RFHardwareSerial : public Stream {
 public:
-    ring_buffer* _rx_buffer;
-    ring_buffer_tx* _tx_buffer;
+    ring_buffer _rx_buffer;
+    ring_buffer_tx _tx_buffer;
     volatile uint8_t* _ubrrh;
     volatile uint8_t* _ubrrl;
     volatile uint8_t* _ucsra;
@@ -208,8 +181,7 @@ public:
     uint8_t _u2x;
 
 public:
-    RFHardwareSerial(ring_buffer* rx_buffer, ring_buffer_tx* tx_buffer,
-                     volatile uint8_t* ubrrh, volatile uint8_t* ubrrl,
+    RFHardwareSerial(volatile uint8_t* ubrrh, volatile uint8_t* ubrrl,
                      volatile uint8_t* ucsra, volatile uint8_t* ucsrb,
                      volatile uint8_t* udr,
                      uint8_t rxen, uint8_t txen, uint8_t rxcie, uint8_t udrie, uint8_t u2x);
@@ -228,26 +200,27 @@ public:
     operator bool();
     int outputUnused(void); // Used for output in interrupts
 };
-extern RFHardwareSerial RFSerial;
-#define RFSERIAL RFSerial
+extern RFHardwareSerial Serial;
+#ifndef RFSERIAL
+#define RFSERIAL Serial
+#endif
 //extern ring_buffer tx_buffer;
-#define WAIT_OUT_EMPTY \
-    while (tx_buffer.head != tx_buffer.tail) { \
-    }
-#else
 #define RFSERIAL Serial
 #if defined(BLUETOOTH_SERIAL) && BLUETOOTH_SERIAL > 0
 #if BLUETOOTH_SERIAL == 1
 #define RFSERIAL2 Serial1
+extern RFHardwareSerial Serial1;
 #elif BLUETOOTH_SERIAL == 2
 #define RFSERIAL2 Serial2
+extern RFHardwareSerial Serial2;
 #elif BLUETOOTH_SERIAL == 3
 #define RFSERIAL2 Serial3
+extern RFHardwareSerial Serial3;
 #elif BLUETOOTH_SERIAL == 4
 #define RFSERIAL2 Serial4
-#elif BLUETOOTH_SERIAL == 5
-#define RFSERIAL2 Serial5
-#endif
+extern RFHardwareSerial Serial4;
+#else
+#error Unknown Serial class for BLUETOOTH_SERIAL selected!
 #endif
 #endif
 
@@ -256,9 +229,28 @@ public:
 #if FEATURE_WATCHDOG
     static bool wdPinged;
 #endif
+    static uint8_t i2cError;
+    static BootReason startReason;
+
     HAL();
     virtual ~HAL();
-    static inline void hwSetup(void) {}
+
+    // Try to initialize pinNumber as hardware PWM. Returns internal
+    // id if it succeeds or -1 if it fails. Typical reasons to fail
+    // are no pwm support for that pin or an other pin uses same PWM
+    // channel.
+    static int initHardwarePWM(int pinNumber, uint32_t frequency);
+    // Set pwm output to value. id is id from initHardwarePWM.
+    static void setHardwarePWM(int id, int value);
+    // Set pwm frequency to value. id is id from initHardwarePWM.
+    static void setHardwareFrequency(int id, uint32_t frequency);
+    // No DAC on megas
+    // Initalize hardware DAC control on dacPin if supported.
+    // Returns internal id if it succeeds or -1 if it fails.
+    static fast8_t initHardwareDAC(fast8_t dacPin) { return -1; }
+    // Set the DAC output to value. id is from initHardwareDAC.
+    static void setHardwareDAC(fast8_t id, fast8_t value) { }
+    static inline void hwSetup(void) { }
 
     static inline void digitalWrite(uint8_t pin, uint8_t value) {
         ::digitalWrite(pin, value);
@@ -285,11 +277,14 @@ public:
         ::noTone(BEEPER_PIN);
 #endif
     }
+#if EEPROM_AVAILABLE == EEPROM_SDCARD || EEPROM_AVAILABLE == EEPROM_FLASH
+#error For AVR processors only real EEPROM is supported!
+#endif
     static inline void eprSetByte(unsigned int pos, uint8_t value) {
-        eeprom_write_byte((unsigned char*)(pos), value);
+        eeprom_write_byte((uint8_t*)(pos), value);
     }
     static inline void eprSetInt16(unsigned int pos, int16_t value) {
-        eeprom_write_word((unsigned int*)(pos), value);
+        eeprom_write_word((uint16_t*)(pos), value);
     }
     static inline void eprSetInt32(unsigned int pos, int32_t value) {
         eeprom_write_dword((uint32_t*)(pos), value);
@@ -301,10 +296,10 @@ public:
         return eeprom_read_byte((unsigned char*)(pos));
     }
     static inline int16_t eprGetInt16(unsigned int pos) {
-        return eeprom_read_word((uint16_t*)(pos));
+        return static_cast<int16_t>(eeprom_read_word((uint16_t*)(pos)));
     }
     static inline int32_t eprGetInt32(unsigned int pos) {
-        return eeprom_read_dword((uint32_t*)(pos));
+        return static_cast<int32_t>(eeprom_read_dword((uint32_t*)(pos)));
     }
     static inline float eprGetFloat(unsigned int pos) {
         float v;
@@ -331,8 +326,11 @@ public:
     static inline char readFlashByte(PGM_P ptr) {
         return pgm_read_byte(ptr);
     }
-    static inline int16_t readFlashWord(PGM_P ptr) {
+    static inline int16_t readFlashWord(const int16_t* ptr) {
         return pgm_read_word(ptr);
+    }
+    static inline const void* readFlashAddress(const void* adr) {
+        return (const void*)pgm_read_word(adr);
     }
     static inline void serialSetBaudrate(long baud) {
         RFSERIAL.begin(baud);
@@ -350,110 +348,23 @@ public:
         RFSERIAL.flush();
     }
     static void setupTimer();
+    static void handlePeriodical();
+    static void updateStartReason();
     static void showStartReason();
     static int getFreeRam();
     static void resetHardware();
 
-    // SPI related functions
-    static void spiBegin(uint8_t ssPin = 0) {
-#if SDSS >= 0
-        SET_INPUT(MISO_PIN);
-        SET_OUTPUT(MOSI_PIN);
-        SET_OUTPUT(SCK_PIN);
-        // SS must be in output mode even it is not chip select
-        SET_OUTPUT(SDSS);
-#if SDSSORIG > -1
-        SET_OUTPUT(SDSSORIG);
-#endif
-        // set SS high - may be chip select for another SPI device
-#if defined(SET_SPI_SS_HIGH) && SET_SPI_SS_HIGH
-        WRITE(SDSS, HIGH);
-#endif // SET_SPI_SS_HIGH
-#endif
-    }
-    static inline void spiInit(uint8_t spiRate) {
-        uint8_t r = 0;
-        for (uint8_t b = 2; spiRate > b && r < 6; b <<= 1, r++)
-            ;
-        SET_OUTPUT(SS);
-        WRITE(SS, HIGH);
-        SET_OUTPUT(SCK);
-        SET_OUTPUT(MOSI_PIN);
-        SET_INPUT(MISO_PIN);
-#ifdef PRR
-        PRR &= ~(1 << PRSPI);
-#elif defined PRR0
-        PRR0 &= ~(1 << PRSPI);
-#endif
-        // See avr processor documentation
-        SPCR = (1 << SPE) | (1 << MSTR) | (r >> 1);
-        SPSR = (r & 1 || r == 6 ? 0 : 1) << SPI2X;
-    }
-    static inline uint8_t spiReceive(uint8_t send = 0xff) {
-        SPDR = send;
-        while (!(SPSR & (1 << SPIF))) {
-        }
-        return SPDR;
-    }
-    static inline void spiReadBlock(uint8_t* buf, size_t nbyte) {
-        if (nbyte-- == 0)
-            return;
-        SPDR = 0XFF;
-        for (size_t i = 0; i < nbyte; i++) {
-            while (!(SPSR & (1 << SPIF))) {
-            }
-            buf[i] = SPDR;
-            SPDR = 0XFF;
-        }
-        while (!(SPSR & (1 << SPIF))) {
-        }
-        buf[nbyte] = SPDR;
-    }
-    static inline void spiSend(uint8_t b) {
-        SPDR = b;
-        while (!(SPSR & (1 << SPIF))) {
-        }
-    }
-    static inline void spiSend(const uint8_t* buf, size_t n) {
-        if (n == 0)
-            return;
-        SPDR = buf[0];
-        if (n > 1) {
-            uint8_t b = buf[1];
-            size_t i = 2;
-            while (1) {
-                while (!(SPSR & (1 << SPIF))) {
-                }
-                SPDR = b;
-                if (i == n)
-                    break;
-                b = buf[i++];
-            }
-        }
-        while (!(SPSR & (1 << SPIF))) {
-        }
-    }
-
-    static inline __attribute__((always_inline)) void spiSendBlock(uint8_t token, const uint8_t* buf) {
-        SPDR = token;
-        for (uint16_t i = 0; i < 512; i += 2) {
-            while (!(SPSR & (1 << SPIF))) {
-            }
-            SPDR = buf[i];
-            while (!(SPSR & (1 << SPIF))) {
-            }
-            SPDR = buf[i + 1];
-        }
-        while (!(SPSR & (1 << SPIF))) {
-        }
-    }
+    static void spiInit(); // only called once to initialize for spi usage
+    static void spiBegin(uint32_t clock, uint8_t mode, uint8_t msbfirst);
+    static uint8_t spiTransfer(uint8_t);
+    static void spiEnd();
 
     // I2C Support
 
     static void i2cSetClockspeed(uint32_t clockSpeedHz);
     static void i2cInit(uint32_t clockSpeedHz);
     static void i2cStartRead(uint8_t address7bit, uint8_t bytes);
-    static void i2cStart(uint8_t address7bit);
+    // static void i2cStart(uint8_t address7bit);
     static void i2cStartAddr(uint8_t address7bit, unsigned int pos, uint8_t readBytes);
     static void i2cStop(void);
     static void i2cWrite(uint8_t data);
@@ -477,31 +388,18 @@ public:
         wdPinged = true;
 #endif
     };
-#if NUM_SERVOS > 0
     static unsigned int servoTimings[4];
     static void servoMicroseconds(uint8_t servo, int ms, uint16_t autoOff);
-#endif
     static void analogStart();
-    static void reportHALDebug() {}
+    static void analogEnable(int channel);
+    static int analogRead(int channel) { return analogValues[channel]; }
+    static void reportHALDebug() { }
+    static void switchToBootMode();
 
 protected:
 private:
 };
-/*#if MOTHERBOARD==6 || MOTHERBOARD==62 || MOTHERBOARD==7
-#if MOTHERBOARD!=7
-#define SIMULATE_PWM
-#endif
-#define MOTION2_TIMER_VECTOR TIMER2_COMPA_vect
-#define MOTION2_OCR OCR2A
-#define MOTION2_TCCR TCCR2A
-#define MOTION2_TIMSK TIMSK2
-#define MOTION2_OCIE OCIE2A
-#define PWM_TIMER_VECTOR TIMER2_COMPB_vect
-#define PWM_OCR OCR2B
-#define PWM_TCCR TCCR2B
-#define PWM_TIMSK TIMSK2
-#define PWM_OCIE OCIE2B
-#else*/
+
 #define MOTION2_TIMER_VECTOR TIMER0_COMPA_vect
 #define MOTION2_OCR OCR0A
 #define MOTION2_TCCR TCCR0A
@@ -512,5 +410,3 @@ private:
 #define PWM_TCCR TCCR0A
 #define PWM_TIMSK TIMSK0
 #define PWM_OCIE OCIE0B
-//#endif
-#endif // HAL_H

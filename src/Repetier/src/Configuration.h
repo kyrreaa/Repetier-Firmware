@@ -54,7 +54,7 @@
 #define FEATURE_Z_PROBE 0
 #define FEATURE_RETRACTION 1
 #define NUM_AXES 5                   // X,Y,Z and E for extruder A,B,C would be 5,6,7
-#define STEPPER_FREQUENCY 153000     // Maximum stepper frequency.
+#define STEPPER_FREQUENCY 100000     // Maximum stepper frequency.
 #define PREPARE_FREQUENCY 1000       // Update frequency for new blocks. Must be higher then PREPARE_FREQUENCY.
 #define BLOCK_FREQUENCY 500          // Number of blocks with constant stepper rate per second.
 #define VELOCITY_PROFILE 2           // 0 = linear, 1 = cubic, 2 = quintic velocity shape
@@ -67,7 +67,7 @@
 #define TEMPERATURE_CONTROL_RANGE 20 // Start with controlling if temperature is +/- this value to target temperature
 #define HOST_RESCUE 0                // Enable host rescue help system
 //#define DEBUG_RESCUE                 // Uncomment to add power loss entry in debug menu while printing
-#define POWERLOSS_LEVEL 2     // How much time do we have on powerloss, 0 = no move, 1 = short just raise Z, 2 = long full park move
+#define POWERLOSS_LEVEL 0     // How much time do we have on powerloss, 0 = no move, 1 = short just raise Z, 2 = long full park move
 #define POWERLOSS_UP 5        // How much to move up if mode 1 is active
 #define Z_PROBE_TYPE 1        // 0 = no z probe, 1 = default z probe, 2 = Nozzle as probe
 #define Z_PROBE_BORDER 2      // Safety border to ensure position is allowed
@@ -84,13 +84,13 @@
 #define PRINTER_TYPE PRINTER_TYPE_CORE_XYZ
 // steps to include as babysteps per 1/BLOCK_FREQUENCY seconds. Must be lower then STEPPER_FREQUENCY/BLOCK_FREQUENCY and be low enough to not loose steps.
 #define BABYSTEPS_PER_BLOCK \
-    { 1, 1, 1 , 1, 1}
+    { 10, 10, 10, 10, 10}
 // If all axis end stops are hardware based we can skip the time consuming tests each step
 #define NO_SOFTWARE_AXIS_ENDSTOPS
 // Normally only a delta has motor end stops required. Normally you trigger using axis endstops.
 #define NO_MOTOR_ENDSTOPS
 
-#define FEATURE_CONTROLLER CONTROLLER_FELIX_DUE
+#define FEATURE_CONTROLLER CONTROLLER_NONE
 // Use more memory to speedup display updates
 #define DISPLAY_FULL_BUFFER 1
 // Direction 1 or -1

@@ -42,6 +42,9 @@ extern "C" char* sbrk(int i);
 
 char HAL::virtualEeprom[EEPROM_BYTES] = { 0, 0, 0, 0, 0, 0, 0 };
 bool HAL::wdPinged = true;
+uint8_t HAL::i2cError = 0;
+BootReason HAL::startReason = BootReason::UNKNOWN;
+
 volatile uint8_t HAL::insideTimer1 = 0;
 
 #if defined(PIN_SERIAL2_RX) && defined(PIN_SERIAL2_TX) && defined(PAD_SERIAL2_TX)
@@ -107,7 +110,7 @@ HAL::~HAL() {
 maximum time for 120MHz is 0.55924 seconds with prescaler 1024!
 */
 #define SYNC_TIMER(timer) \
-    while (timer->COUNT16.SYNCBUSY.reg != 0) {}
+    while (timer->COUNT16.SYNCBUSY.reg != 0) { }
 
 void getPrescaleFreq(uint32_t ticks, uint32_t& prescale, uint32_t& freq) {
     if (ticks < 65536) {
@@ -150,7 +153,7 @@ void HAL::setupTimer() {
     uint32_t prescale, freq;
 
     GCLK->PCHCTRL[MOTION2_TIMER_ID].reg = GCLK_PCHCTRL_GEN_GCLK0_Val | (1 << GCLK_PCHCTRL_CHEN_Pos);
-    while (GCLK->SYNCBUSY.reg > 0) {}
+    while (GCLK->SYNCBUSY.reg > 0) { }
 
     MOTION2_TIMER->COUNT16.CTRLA.bit.ENABLE = 0; // can only change if disabled
 
@@ -177,7 +180,7 @@ void HAL::setupTimer() {
     // Regular interrupts for heater control etc
 
     GCLK->PCHCTRL[PWM_TIMER_ID].reg = GCLK_PCHCTRL_GEN_GCLK0_Val | (1 << GCLK_PCHCTRL_CHEN_Pos);
-    while (GCLK->SYNCBUSY.reg > 0) {}
+    while (GCLK->SYNCBUSY.reg > 0) { }
 
     PWM_TIMER->COUNT16.CTRLA.bit.ENABLE = 0; // can only change if disabled
 
@@ -202,7 +205,7 @@ void HAL::setupTimer() {
     // Timer for stepper motor control
 
     GCLK->PCHCTRL[MOTION3_TIMER_ID].reg = GCLK_PCHCTRL_GEN_GCLK0_Val | (1 << GCLK_PCHCTRL_CHEN_Pos);
-    while (GCLK->SYNCBUSY.reg > 0) {}
+    while (GCLK->SYNCBUSY.reg > 0) { }
 
     MOTION3_TIMER->COUNT16.CTRLA.bit.ENABLE = 0; // can only change if disabled
 
@@ -225,10 +228,10 @@ void HAL::setupTimer() {
     SYNC_TIMER(MOTION3_TIMER);
 
     // Servo control
-#if NUM_SERVOS > 0
+#if NUM_SERVOS > 0 || NUM_BEEPERS > 0
 
     GCLK->PCHCTRL[SERVO_TIMER_ID].reg = GCLK_PCHCTRL_GEN_GCLK0_Val | (1 << GCLK_PCHCTRL_CHEN_Pos);
-    while (GCLK->SYNCBUSY.reg > 0) {}
+    while (GCLK->SYNCBUSY.reg > 0) { }
 
     SERVO_TIMER->COUNT16.CTRLA.bit.ENABLE = 0; // can only change if disabled
 
@@ -250,37 +253,72 @@ void HAL::setupTimer() {
     SYNC_TIMER(SERVO_TIMER);
 
 #endif
+#if NUM_BEEPERS > 0
+    // Add interrupt for tone handling
+#endif
 }
 
+// Called within checkForPeriodicalActions (main loop, more or less)
+// as fast as possible
+void HAL::handlePeriodical() {
+}
 struct PWMChannel {
     bool used;
     const PinDescription* pwm; // timer
     uint32_t scale;
     int bits;
     int32_t divisor;
+    uint8_t tcc_ch;
 };
 
-static PWMChannel pwm_channel[13] = {
+static PWMChannel pwm_channel[33] = {
     // 5 Tcc channel
-    { false, nullptr, 0, TCC0_SIZE, -1 }, // Pins 2, 3, 4, 5, 24, 25
-    { false, nullptr, 0, TCC1_SIZE, -1 }, // Pins 6, 7, 8, 62, 63
-    { false, nullptr, 0, TCC2_SIZE, -1 }, // Pins 23,28
-    { false, nullptr, 0, TCC3_SIZE, -1 }, // Pins 18,19
-    { false, nullptr, 0, TCC4_SIZE, -1 }, // Pins 38,39
+    { false, nullptr, 0, TCC0_SIZE, -1, 0 }, // Pins 25
+    { false, nullptr, 0, TCC0_SIZE, -1, 1 }, // 24
+    { false, nullptr, 0, TCC0_SIZE, -1, 2 }, // 2
+    { false, nullptr, 0, TCC0_SIZE, -1, 3 }, // 3
+    { false, nullptr, 0, TCC0_SIZE, -1, 4 }, // 4
+    { false, nullptr, 0, TCC0_SIZE, -1, 5 }, // 5
+    { false, nullptr, 0, TCC1_SIZE, -1, 0 }, // Pins 6, 8
+    { false, nullptr, 0, TCC1_SIZE, -1, 1 }, // 7
+    { false, nullptr, 0, TCC1_SIZE, -1, 2 }, // 62
+    { false, nullptr, 0, TCC1_SIZE, -1, 3 }, // 63
+    { false, nullptr, 0, TCC2_SIZE, -1, 0 }, // Pins 28
+    { false, nullptr, 0, TCC2_SIZE, -1, 1 }, // 23
+    { false, nullptr, 0, TCC2_SIZE, -1, 2 },
+    { false, nullptr, 0, TCC3_SIZE, -1, 0 }, // Pins 18
+    { false, nullptr, 0, TCC3_SIZE, -1, 1 }, // 19
+    { false, nullptr, 0, TCC4_SIZE, -1, 0 }, // Pins 39
+    { false, nullptr, 0, TCC4_SIZE, -1, 1 }, // 38
     // 8 Tc channels, 0-4 pre used by timers!
     // 0 MOTION3
-    { true, nullptr, 0, 8, -1 }, // Pin 59
+    { true, nullptr, 0, 8, -1, 0 }, // Pin 59
+    { true, nullptr, 0, 8, -1, 1 },
     // 1 PWM_TIMER
-    { true, nullptr, 0, 8, -1 },  // Pins 60, 61
-    { false, nullptr, 0, 8, -1 }, // Pins 26, 27
+    { true, nullptr, 0, 8, -1, 0 }, // Pins 60
+    { true, nullptr, 0, 8, -1, 1 }, // 61
+    // 2
+    { false, nullptr, 0, 8, -1, 0 }, // Pins 26
+    { false, nullptr, 0, 8, -1, 1 }, // 27
     // 3 Tone
-    { true, nullptr, 0, 8, -1 }, // Pins 34, 35
+    { true, nullptr, 0, 8, -1, 0 }, // Pins 35
+    { true, nullptr, 0, 8, -1, 1 }, // 34
     // 4 servo timer can be used if no servos present
-    { NUM_SERVOS > 0, nullptr, 0, 8, -1 }, // Pins 30, 31
+    { NUM_SERVOS > 0 || NUM_BEEPERS > 0, nullptr, 0, 8, -1, 0 }, // Pins 31
+    { NUM_SERVOS > 0 || NUM_BEEPERS > 0, nullptr, 0, 8, -1, 1 }, // 30
     // 5 MOTION2
-    { true, nullptr, 0, 8, -1 },  // No Pins
-    { false, nullptr, 0, 8, -1 }, // Pins 9, 14, 69
-    { false, nullptr, 0, 8, -1 }  // Pins 10, 12, 13, 87
+    { true, nullptr, 0, 8, -1, 0 }, // No Pins
+    { true, nullptr, 0, 8, -1, 1 },
+    // 6
+    { false, nullptr, 0, 8, -1, 0 }, // Pins 9, 14
+    { false, nullptr, 0, 8, -1, 1 }, // 69
+    // 7
+    { false, nullptr, 0, 8, -1, 0 }, // Pins 10, 12
+    { false, nullptr, 0, 8, -1, 1 }  // 13, 87
+};
+
+static uint8_t tc_id[13] = {
+    0, 6, 10, 13, 15, 17, 19, 21, 23, 25, 27, 29, 31
 };
 
 static void computePWMDivider(uint32_t frequency, uint32_t& div, uint32_t& scale, int bits) {
@@ -404,6 +442,38 @@ static int pinPeripheral(uint32_t ulPin, EPioType ulPeripheral) {
     return 0l;
 }
 
+fast8_t HAL::initHardwareDAC(fast8_t dacPin) {
+    if (dacPin != DAC1 && dacPin != DAC0) {
+        return -1;
+    }
+    uint8_t channel = ((dacPin == DAC0) ? 0u : 1u);
+    pinPeripheral(dacPin, PIO_ANALOG);
+    while (DAC->SYNCBUSY.bit.ENABLE)
+        ;
+    DAC->CTRLA.reg &= ~DAC_CTRLA_ENABLE;
+    while (DAC->SYNCBUSY.bit.ENABLE)
+        ;
+    DAC->DACCTRL[channel].reg |= DAC_DACCTRL_ENABLE;
+    DAC->CTRLA.reg |= DAC_CTRLA_ENABLE;
+    while (DAC->SYNCBUSY.bit.ENABLE || !(DAC->STATUS.vec.READY & (1 << channel)))
+        ;
+
+    setHardwareDAC(channel, 0u);
+    return channel;
+}
+
+void HAL::setHardwareDAC(fast8_t id, fast8_t value) {
+    if (id != 0 && id != 1) {
+        return;
+    }
+    if (value > 255) {
+        value = 255;
+    }
+    value = (static_cast<uint32_t>(value) * 4095ul) / 255ul;
+    DAC->DATA[id].reg = value;
+    while ((DAC->SYNCBUSY.vec.DATA & (1 << id)))
+        ;
+}
 // Try to initialize pinNumber as hardware PWM. Returns internal
 // id if it succeeds or -1 if it fails. Typical reasons to fail
 // are no pwm support for that pin or an other pin uses same PWM
@@ -416,7 +486,7 @@ int HAL::initHardwarePWM(int pinNumber, uint32_t frequency) {
     const PinDescription* pd = &g_APinDescription[pinNumber];
     uint32_t tcNum = GetTCNumber(pd->ulPWMChannel);
     uint8_t tcChannel = GetTCChannelNumber(pd->ulPWMChannel);
-    if (pd->ulPWMChannel == NOT_ON_PWM || pwm_channel[tcNum].used) { // pwm not possible
+    if (pd->ulPWMChannel == NOT_ON_PWM || pwm_channel[tc_id[tcNum] + tcChannel].used) { // pwm already in use
         return 255;
     }
     uint32_t attr = pd->ulPinAttribute;
@@ -427,10 +497,10 @@ int HAL::initHardwarePWM(int pinNumber, uint32_t frequency) {
     } else if (attr & PIN_ATTR_PWM_G) {
         pinPeripheral(pinNumber, PIO_TCC_PDEC);
     }
-    PWMChannel& c = pwm_channel[tcNum];
-    if (c.pwm != nullptr) { // First come sets the frequency, next just reuses it!
-        setHardwarePWM(tcNum, 0);
-        return tcNum;
+    PWMChannel& c = pwm_channel[tc_id[tcNum] + tcChannel];
+    if (c.pwm != nullptr) { // First come sets the frequency, next just sets is again!
+        setHardwarePWM(tc_id[tcNum] + tcChannel, 0);
+        return tc_id[tcNum] + tcChannel;
     }
     c.used = true;
     c.pwm = pd;
@@ -448,60 +518,60 @@ int HAL::initHardwarePWM(int pinNumber, uint32_t frequency) {
 
         //reset
         TCx->COUNT8.CTRLA.bit.SWRST = 1;
-        while (TCx->COUNT8.SYNCBUSY.bit.SWRST) {}
+        while (TCx->COUNT8.SYNCBUSY.bit.SWRST) { }
 
         // Disable TCx
         TCx->COUNT8.CTRLA.bit.ENABLE = 0;
-        while (TCx->COUNT8.SYNCBUSY.bit.ENABLE) {}
+        while (TCx->COUNT8.SYNCBUSY.bit.ENABLE) { }
         // Set Timer counter Mode to 8 bits, normal PWM, prescaler dynamic
         TCx->COUNT8.CTRLA.reg = TC_CTRLA_MODE_COUNT8 | (div << TC_CTRLA_PRESCALER_Pos);
         TCx->COUNT8.WAVE.reg = TC_WAVE_WAVEGEN_NPWM;
 
-        while (TCx->COUNT8.SYNCBUSY.bit.CC0) {}
+        while (TCx->COUNT8.SYNCBUSY.bit.CC0) { }
         // Set the initial value
         TCx->COUNT8.CC[tcChannel].reg = (uint8_t)duty;
-        while (TCx->COUNT8.SYNCBUSY.bit.CC0) {}
+        while (TCx->COUNT8.SYNCBUSY.bit.CC0) { }
         // Set PER to maximum counter value (resolution : 0xFF)
         TCx->COUNT8.PER.reg = (uint8_t)0xff;
-        while (TCx->COUNT8.SYNCBUSY.bit.PER) {}
+        while (TCx->COUNT8.SYNCBUSY.bit.PER) { }
         // Enable TCx
         TCx->COUNT8.CTRLA.bit.ENABLE = 1;
-        while (TCx->COUNT8.SYNCBUSY.bit.ENABLE) {}
+        while (TCx->COUNT8.SYNCBUSY.bit.ENABLE) { }
     } else {
         c.divisor = div;
         // -- Configure TCC
         Tcc* TCCx = (Tcc*)GetTC(pd->ulPWMChannel);
 
         TCCx->CTRLA.bit.SWRST = 1;
-        while (TCCx->SYNCBUSY.bit.SWRST) {}
+        while (TCCx->SYNCBUSY.bit.SWRST) { }
 
         // Disable TCCx
         TCCx->CTRLA.bit.ENABLE = 0;
-        while (TCCx->SYNCBUSY.bit.ENABLE) {}
+        while (TCCx->SYNCBUSY.bit.ENABLE) { }
         // Set prescaler to 1/256
         TCCx->CTRLA.reg = (div << TCC_CTRLA_PRESCALER_Pos) | TCC_CTRLA_PRESCSYNC_GCLK;
         // TCCx->CTRLA.bit.PRESCALER = div;
         // Set TCx as normal PWM
         TCCx->WAVE.reg = TCC_WAVE_WAVEGEN_NPWM;
-        while (TCCx->SYNCBUSY.bit.WAVE) {}
+        while (TCCx->SYNCBUSY.bit.WAVE) { }
 
-        while (TCCx->SYNCBUSY.reg & (TCC_SYNCBUSY_CC0 | TCC_SYNCBUSY_CC1 | TCC_SYNCBUSY_CC2 | TCC_SYNCBUSY_CC3 | TCC_SYNCBUSY_CC4)) {}
+        while (TCCx->SYNCBUSY.reg & (TCC_SYNCBUSY_CC0 | TCC_SYNCBUSY_CC1 | TCC_SYNCBUSY_CC2 | TCC_SYNCBUSY_CC3 | TCC_SYNCBUSY_CC4)) { }
         // Set the initial value
         TCCx->CC[tcChannel].reg = (uint32_t)duty;
-        while (TCCx->SYNCBUSY.reg & (TCC_SYNCBUSY_CC0 | TCC_SYNCBUSY_CC1 | TCC_SYNCBUSY_CC2 | TCC_SYNCBUSY_CC3 | TCC_SYNCBUSY_CC4)) {}
+        while (TCCx->SYNCBUSY.reg & (TCC_SYNCBUSY_CC0 | TCC_SYNCBUSY_CC1 | TCC_SYNCBUSY_CC2 | TCC_SYNCBUSY_CC3 | TCC_SYNCBUSY_CC4)) { }
         // Set PER to maximum counter value (resolution : 0xFF)
         TCCx->PER.bit.PER = c.scale;
-        while (TCCx->SYNCBUSY.bit.PER) {}
+        while (TCCx->SYNCBUSY.bit.PER) { }
         // Enable TCCx
         TCCx->CTRLA.bit.ENABLE = 1;
-        while (TCCx->SYNCBUSY.bit.ENABLE) {}
+        while (TCCx->SYNCBUSY.bit.ENABLE) { }
     }
-    return tcNum;
+    return tc_id[tcNum] + tcChannel;
 }
 
 // Set pwm output to value. id is id from initHardwarePWM.
 void HAL::setHardwarePWM(int id, int value) {
-    if (id < 0 || id >= 13) { // illegal id
+    if (id < 0 || id >= 33) { // illegal id
         return;
     }
     PWMChannel& c = pwm_channel[id];
@@ -515,55 +585,57 @@ void HAL::setHardwarePWM(int id, int value) {
         Tcc* TCCx = (Tcc*)GetTC(c.pwm->ulPWMChannel);
         // while (TCCx->SYNCBUSY.reg & (TCC_SYNCBUSY_CC0 | TCC_SYNCBUSY_CC1 | TCC_SYNCBUSY_CC2 | TCC_SYNCBUSY_CC3 | TCC_SYNCBUSY_CC4)) {}
         TCCx->CCBUF[tcChannel].reg = (uint32_t)duty;
-        while (TCCx->SYNCBUSY.reg & (TCC_SYNCBUSY_CC0 | TCC_SYNCBUSY_CC1 | TCC_SYNCBUSY_CC2 | TCC_SYNCBUSY_CC3 | TCC_SYNCBUSY_CC4)) {}
-        while (TCCx->SYNCBUSY.reg & TCC_SYNCBUSY_CTRLB) {}
+        while (TCCx->SYNCBUSY.reg & (TCC_SYNCBUSY_CC0 | TCC_SYNCBUSY_CC1 | TCC_SYNCBUSY_CC2 | TCC_SYNCBUSY_CC3 | TCC_SYNCBUSY_CC4)) { }
+        while (TCCx->SYNCBUSY.reg & TCC_SYNCBUSY_CTRLB) { }
         TCCx->CTRLBCLR.bit.LUPD = 1;
-        while (TCCx->SYNCBUSY.bit.CTRLB) {}
+        while (TCCx->SYNCBUSY.bit.CTRLB) { }
     }
 }
 
-// Initialize ADC channels
-#define ANALOG_PIN_TO_CHANNEL(p) (p < 62 ? p - 46 : p - 67)
-int32_t analogValues[16] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
-const PinDescription* analogEnabled[16] = { nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr };
+void HAL::setHardwareFrequency(int id, uint32_t frequency) {
+    // TODO: handle HAL pwm frequency change requests
+    //
+}
+
+int32_t analogValues[NUM_ANALOG_INPUTS] = { 0 };
+const PinDescription* analogEnabled[NUM_ANALOG_INPUTS] = { nullptr };
+
+Adc* analogAdcMap[NUM_ANALOG_INPUTS]; // = {ADC0,ADC0,ADC0};
+
 void reportAnalog() {
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < NUM_ANALOG_INPUTS; i++) {
         if (analogEnabled[i]) {
             Com::printF("Analog ", i);
             Com::printFLN(" = ", analogValues[i]);
         }
     }
 }
-Adc* analogAdcMap[16] = {
-    ADC0, // D67
-    ADC0,
-    ADC0,
-    ADC1,
-    ADC1,
-    ADC1,
-    ADC1,
-    ADC1, // D74
-    ADC1, // D54
-    ADC1,
-    ADC1,
-    ADC1,
-    ADC1,
-    ADC0,
-    ADC0,
-    ADC0 // D61
-};
+void HAL::analogInit(void) {
+    //    #define ANALOG_TO_DIGITAL_PIN(p) (p < NUM_ANALOG_INPUTS ? p + PIN_A0 : -1 )
+    for (int i = 0; i < NUM_ANALOG_INPUTS; i++) {
+        int Channel = ANALOG_TO_DIGITAL_PIN(i);
+        const PinDescription* pd = &g_APinDescription[Channel];
+        uint32_t attr = pd->ulPinAttribute;
+        if (attr & PIN_ATTR_ANALOG) {
+            analogAdcMap[i] = { ADC0 };
+        } else {
+            analogAdcMap[i] = { ADC1 };
+        }
+    }
+}
+
 static int analogConvertPos = -1;
 void HAL::analogStart(void) {
     // Analog channels being used are already enabled. Start conversion
     // only if we have any analog sources.
-    for (int i = 0; i < 16; i++) {
+    for (int i = 0; i < NUM_ANALOG_INPUTS; i++) {
         if (analogEnabled[i] != nullptr) {
             analogConvertPos = i;
             // Set ADC clock to 48MHz clock
             GCLK->PCHCTRL[ADC0_GCLK_ID].reg = GCLK_PCHCTRL_GEN_GCLK1_Val | (1 << GCLK_PCHCTRL_CHEN_Pos);
-            while (GCLK->SYNCBUSY.reg > 0) {}
+            while (GCLK->SYNCBUSY.reg > 0) { }
             GCLK->PCHCTRL[ADC1_GCLK_ID].reg = GCLK_PCHCTRL_GEN_GCLK1_Val | (1 << GCLK_PCHCTRL_CHEN_Pos);
-            while (GCLK->SYNCBUSY.reg > 0) {}
+            while (GCLK->SYNCBUSY.reg > 0) { }
             ADC0->CTRLA.bit.PRESCALER = 7; // prescaler 256
             ADC1->CTRLA.bit.PRESCALER = 7; // prescaler 256
             ADC0->CTRLB.reg = ADC_CTRLB_RESSEL_12BIT;
@@ -581,10 +653,10 @@ void HAL::analogStart(void) {
             ADC0->INTENSET.bit.RESRDY = 1; // enable interrupt
             ADC1->INTENSET.bit.RESRDY = 1; // enable interrupt
             Adc* adc = analogAdcMap[analogConvertPos];
-            while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_INPUTCTRL) {}                            //wait for sync
+            while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_INPUTCTRL) { }                           //wait for sync
             adc->INPUTCTRL.bit.MUXPOS = analogEnabled[analogConvertPos]->ulADCChannelNumber; // Selection for the positive ADC input
             adc->CTRLA.bit.ENABLE = 0x01;                                                    // Enable ADC
-            while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_ENABLE) {}                               //wait for sync
+            while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_ENABLE) { }                              //wait for sync
             // Start conversion
             //adc->SWTRIG.bit.START = 1;
             adc->INTFLAG.reg = ADC_INTFLAG_RESRDY; // Clear the Data Ready flag
@@ -596,43 +668,43 @@ void HAL::analogStart(void) {
     }
 }
 inline void analogISRFunction() {
-#ifdef DEBUG_TIMING
+#if DEBUG_TIMING
     WRITE(DEBUG_ISR_ANALOG_PIN, 1);
 #endif
     Adc* adc;
     if (analogConvertPos >= 0) { // store result
         adc = analogAdcMap[analogConvertPos];
         analogValues[analogConvertPos] = adc->RESULT.reg;
-        adc->CTRLA.bit.ENABLE = 0x00;                      // Disable ADC
-        while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_ENABLE) {} //wait for sync
+        adc->CTRLA.bit.ENABLE = 0x00;                       // Disable ADC
+        while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_ENABLE) { } //wait for sync
     }
     // go to next active
     int count = 0;
     do {
         count++;
-        if (++analogConvertPos == 16) {
+        if (++analogConvertPos == NUM_ANALOG_INPUTS) {
             // Process data
 #undef IO_TARGET
 #define IO_TARGET IO_TARGET_ANALOG_INPUT_LOOP
 #include "io/redefine.h"
             analogConvertPos = 0;
         }
-    } while (analogEnabled[analogConvertPos] == nullptr && count < 16);
+    } while (analogEnabled[analogConvertPos] == nullptr && count < NUM_ANALOG_INPUTS);
 
     // start new conversion
     if (analogEnabled[analogConvertPos] != nullptr) {
         adc = analogAdcMap[analogConvertPos];
-        while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_INPUTCTRL) {}                            //wait for sync
+        while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_INPUTCTRL) { }                           //wait for sync
         adc->INPUTCTRL.bit.MUXPOS = analogEnabled[analogConvertPos]->ulADCChannelNumber; // Selection for the positive ADC input
         adc->CTRLA.bit.ENABLE = 0x01;                                                    // Enable ADC
-        while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_ENABLE) {}                               //wait for sync
+        while (adc->SYNCBUSY.reg & ADC_SYNCBUSY_ENABLE) { }                              //wait for sync
         // Start conversion
         //adc->SWTRIG.bit.START = 1;
         adc->INTFLAG.reg = ADC_INTFLAG_RESRDY; // Clear the Data Ready flag
         // Start conversion again, since The first conversion after the reference is changed must not be used.
         adc->SWTRIG.bit.START = 1;
     }
-#ifdef DEBUG_TIMING
+#if DEBUG_TIMING
     WRITE(DEBUG_ISR_ANALOG_PIN, 0);
 #endif
 }
@@ -644,7 +716,7 @@ void ADC1_1_Handler(void) {
 }
 void HAL::analogEnable(int channel) {
     int cNum = ANALOG_PIN_TO_CHANNEL(channel);
-    if (cNum < 0 || cNum >= 16) {
+    if (cNum < 0 || cNum >= NUM_ANALOG_INPUTS) {
         return;
     }
     pinPeripheral(channel, PIO_ANALOG);
@@ -656,7 +728,7 @@ void HAL::analogEnable(int channel) {
 
 int HAL::analogRead(int pin) {
     int cNum = ANALOG_PIN_TO_CHANNEL(pin);
-    if (cNum < 0 || cNum >= 16) { // protect for config errors
+    if (cNum < 0 || cNum >= NUM_ANALOG_INPUTS) { // protect for config errors
         return 0;
     }
     return analogValues[cNum];
@@ -678,67 +750,79 @@ void HAL::importEEPROM() {
 #if EEPROM_AVAILABLE == EEPROM_SDCARD
 
 #if !SDSUPPORT
-#error EEPROM using sd card requires SDCARSUPPORT
+#error EEPROM using sd card requires SDCARDSUPPORT
 #endif
 
 millis_t eprSyncTime = 0; // in sync
-SdFile eepromFile;
-void HAL::syncEEPROM() { // store to disk if changed
-    millis_t time = millis();
-
-    if (eprSyncTime && (time - eprSyncTime > 15000)) { // Buffer writes only every 15 seconds to pool writes
-        eprSyncTime = 0;
-        bool failed = false;
-        if (!sd.sdactive) { // not mounted
-            if (eepromFile.isOpen())
+sd_file_t eepromFile;
+void HAL::syncEEPROM() {                                     // store to disk if changed
+    if (eprSyncTime && (millis() - eprSyncTime > 15000ul)) { // Buffer writes only every 15 seconds to pool writes
+        eprSyncTime = 0ul;
+        if (sd.state < SDState::SD_MOUNTED) { // not mounted
+            if (eepromFile.isOpen()) {
                 eepromFile.close();
-            Com::printErrorF("Could not write eeprom to sd card - no sd card mounted");
-            Com::println();
+            }
+            Com::printErrorFLN(PSTR("Could not write eeprom to sd card - no sd card mounted"));
             return;
         }
 
-        if (!eepromFile.seekSet(0))
-            failed = true;
-
-        if (!failed && eepromFile.write(virtualEeprom, EEPROM_BYTES) != EEPROM_BYTES)
-            failed = true;
-
-        if (failed) {
-            Com::printErrorF("Could not write eeprom to sd card");
-            Com::println();
+        if (!eepromFile.isOpen()
+            || eepromFile.write(virtualEeprom, EEPROM_BYTES) != EEPROM_BYTES
+            || !eepromFile.sync()) {
+            Com::printErrorFLN(PSTR("Could not write eeprom to sd card"));
+            sd.printIfCardErrCode();
+        } else {
+            eepromFile.rewind();
         }
     }
 }
 
 void HAL::importEEPROM() {
-    if (eepromFile.isOpen())
-        eepromFile.close();
-    if (!eepromFile.open("eeprom.bin", O_RDWR | O_CREAT | O_SYNC) || eepromFile.read(virtualEeprom, EEPROM_BYTES) != EEPROM_BYTES) {
-        Com::printFLN(Com::tOpenFailedFile, "eeprom.bin");
-    } else {
-        Com::printFLN("EEPROM read from sd card.");
+    int readBytes = 0;
+    if (!eepromFile.open("eeprom.bin", O_RDWR | O_CREAT | O_SYNC)
+        || ((readBytes = eepromFile.read(virtualEeprom, EEPROM_BYTES)) != EEPROM_BYTES
+            && readBytes)) { // Sometimes we have a 0 byte eeprom.bin
+        Com::printFLN(Com::tOpenFailedFile, PSTR("eeprom.bin"));
     }
-    EEPROM::readDataFromEspi::beginEPROM();
+    EEPROM::readDataFromEEPROM();
+    if (eprSyncTime) {
+        eprSyncTime = HAL::timeInMilliseconds() | 1UL; // Reset any sync timer
+    }
 }
 
 #endif
 
 // Print apparent cause of start/restart
 void HAL::showStartReason() {
-    uint8_t mcu = REG_RSTC_RCAUSE;
-    if (mcu & RSTC_RCAUSE_POR) {
-        Com::printInfoFLN(Com::tPowerUp);
-    }
-    // this is return from backup mode on SAM
-    if (mcu & (RSTC_RCAUSE_BODCORE | RSTC_RCAUSE_BODVDD)) {
+    if (startReason == BootReason::BROWNOUT) {
         Com::printInfoFLN(Com::tBrownOut);
-    }
-    if (mcu & RSTC_RCAUSE_WDT) {
+    } else if (startReason == BootReason::WATCHDOG_RESET) {
         Com::printInfoFLN(Com::tWatchdog);
+    } else if (startReason == BootReason::SOFTWARE_RESET) {
+        Com::printInfoFLN(PSTR("Software reset"));
+    } else if (startReason == BootReason::POWER_UP) {
+        Com::printInfoFLN(Com::tPowerUp);
+    } else if (startReason == BootReason::EXTERNAL_PIN) {
+        Com::printInfoFLN(PSTR("External reset pin reset"));
+    } else {
+        Com::printInfoFLN(PSTR("Unknown reset reason"));
     }
-    Com::printInfoFLN(Com::tSoftwareReset);
-    if (mcu & RSTC_RCAUSE_EXT) {
-        Com::printInfoFLN(Com::tExternalReset);
+}
+void HAL::updateStartReason() {
+    uint8_t mcu = REG_RSTC_RCAUSE;
+    if (mcu & (RSTC_RCAUSE_BODCORE | RSTC_RCAUSE_BODVDD)) {
+        // this is return from backup mode on SAM
+        startReason = BootReason::BROWNOUT;
+    } else if (mcu & RSTC_RCAUSE_WDT) {
+        startReason = BootReason::WATCHDOG_RESET;
+    } else if (mcu & RSTC_RCAUSE_EXT) {
+        startReason = BootReason::EXTERNAL_PIN;
+    } else if (mcu & RSTC_RCAUSE_SYST) {
+        startReason = BootReason::SOFTWARE_RESET;
+    } else if (mcu & RSTC_RCAUSE_POR) {
+        startReason = BootReason::POWER_UP;
+    } else {
+        startReason = BootReason::UNKNOWN;
     }
 }
 
@@ -782,7 +866,9 @@ void HAL::i2cStart(uint8_t address) {
 }
 
 void HAL::i2cStartRead(uint8_t address, uint8_t bytes) {
-    WIRE_PORT.requestFrom(address, bytes);
+    if (!i2cError) {
+        i2cError |= (WIRE_PORT.requestFrom(address, bytes) != bytes);
+    }
 }
 /*************************************************************************
  Issues a start condition and sends address and transfer direction.
@@ -791,12 +877,14 @@ void HAL::i2cStartRead(uint8_t address, uint8_t bytes) {
  Input:   address and transfer direction of I2C device, internal address
 *************************************************************************/
 void HAL::i2cStartAddr(uint8_t address, unsigned int pos, uint8_t readBytes) {
-    WIRE_PORT.beginTransmission(address);
-    WIRE_PORT.write(pos >> 8);
-    WIRE_PORT.write(pos & 255);
-    if (readBytes) {
-        WIRE_PORT.endTransmission();
-        WIRE_PORT.requestFrom(address, readBytes);
+    if (!i2cError) {
+        WIRE_PORT.beginTransmission(address);
+        WIRE_PORT.write(pos >> 8);
+        WIRE_PORT.write(pos & 255);
+        if (readBytes) {
+            i2cError |= WIRE_PORT.endTransmission();
+            i2cError |= (WIRE_PORT.requestFrom(address, readBytes) != readBytes);
+        }
     }
 }
 
@@ -804,7 +892,7 @@ void HAL::i2cStartAddr(uint8_t address, unsigned int pos, uint8_t readBytes) {
  Terminates the data transfer and releases the I2C bus
 *************************************************************************/
 void HAL::i2cStop(void) {
-    WIRE_PORT.endTransmission();
+    i2cError |= WIRE_PORT.endTransmission();
 }
 
 /*************************************************************************
@@ -813,7 +901,9 @@ void HAL::i2cStop(void) {
   Input:    byte to be transfered
 *************************************************************************/
 void HAL::i2cWrite(uint8_t data) {
-    WIRE_PORT.write(data);
+    if (!i2cError) {
+        WIRE_PORT.write(data);
+    }
 }
 
 /*************************************************************************
@@ -821,13 +911,13 @@ void HAL::i2cWrite(uint8_t data) {
  Return:  byte read from I2C device
 *************************************************************************/
 int HAL::i2cRead(void) {
-    if (WIRE_PORT.available()) {
+    if (!i2cError && WIRE_PORT.available()) {
         return WIRE_PORT.read();
     }
     return -1; // should never happen, but better then blocking
 }
 
-#if NUM_SERVOS > 0
+#if NUM_SERVOS > 0 || NUM_BEEPERS > 0
 unsigned int HAL::servoTimings[4] = { 0, 0, 0, 0 };
 unsigned int servoAutoOff[4] = { 0, 0, 0, 0 };
 static uint8_t servoIndex = 0;
@@ -879,6 +969,10 @@ void SERVO_TIMER_VECTOR() {
         if (servoIndex > 7) {
             servoIndex = 0;
         }
+        // Add all generated servo interrupt handlers
+#undef IO_TARGET
+#define IO_TARGET IO_TARGET_SERVO_INTERRUPT
+#include "io/redefine.h"
     }
 }
 #endif
@@ -1042,21 +1136,56 @@ uint8_t HAL::spiTransfer(uint8_t data) {
 void watchdogSetup(void) {
 }
 
-#if BEEPER_PIN > -1
+#if NUM_BEEPERS > 0
 void TC3_Handler(void) {
-    static bool toggle;
-    WRITE(BEEPER_PIN, toggle);
-    toggle = !toggle;
+    static bool beeperIRQPhase = true;
     TONE_TC->COUNT16.INTFLAG.bit.MC0 = 1; // Clear the interrupt
+#undef IO_TARGET
+#define IO_TARGET IO_TARGET_BEEPER_LOOP
+#include "io/redefine.h"
+    beeperIRQPhase = !beeperIRQPhase;
 }
 #endif
 
-void HAL::tone(int frequency) {
-#if BEEPER_PIN >= 0
-    SET_OUTPUT(BEEPER_PIN);
-    NVIC_SetPriority(TONE_TC_IRQn, 2); // don'r disturb stepper interrupt!
+void HAL::tone(uint32_t frequency) {
+#if NUM_BEEPERS > 0
+#if NUM_BEEPERS > 1
+    ufast8_t curPlaying = 0;
+    BeeperSourceBase* playingBeepers[NUM_BEEPERS];
+    // Reduce freq to nearest 100hz, otherwise we can get some insane freq multiples (from eg primes).
+    // also clamp max freq.
+    constexpr ufast8_t reduce = 100;
+    constexpr uint32_t maxFreq = 100000;
+    uint32_t multiFreq = frequency - (frequency % reduce);
+    for (size_t i = 0; i < (NUM_BEEPERS + curPlaying); i++) {
+        uint16_t beeperCurFreq = 0;
+        if (i >= NUM_BEEPERS) {
+            if (multiFreq > maxFreq) {
+                multiFreq = maxFreq;
+            }
+            beeperCurFreq = playingBeepers[i - NUM_BEEPERS]->getCurFreq();
+            beeperCurFreq -= (beeperCurFreq % reduce);
+            playingBeepers[i - NUM_BEEPERS]->setFreqDiv((multiFreq / beeperCurFreq) - 1);
+        } else {
+            if (beepers[i]->getOutputType() == 1 && beepers[i]->isPlaying()) {
+                beeperCurFreq = beepers[i]->getCurFreq();
+                beeperCurFreq -= (beeperCurFreq % reduce);
+                if (!multiFreq) {
+                    multiFreq = beeperCurFreq;
+                }
+                multiFreq = RMath::LCM(multiFreq, beeperCurFreq);
+                playingBeepers[curPlaying++] = beepers[i];
+            }
+        }
+    }
+    frequency = multiFreq;
+#endif
+    if (frequency < 1) {
+        return;
+    }
+    NVIC_SetPriority(TONE_TC_IRQn, 2); // don't disturb stepper interrupt!
     GCLK->PCHCTRL[TONE_TC_GCLK_ID].reg = GCLK_PCHCTRL_GEN_GCLK0_Val | (1 << GCLK_PCHCTRL_CHEN_Pos);
-    while (GCLK->SYNCBUSY.reg > 0) {}
+    while (GCLK->SYNCBUSY.reg > 0) { }
 
     TONE_TC->COUNT16.CTRLA.bit.ENABLE = 0; // can only change if disabled
 
@@ -1080,14 +1209,21 @@ void HAL::tone(int frequency) {
 #endif
 }
 void HAL::noTone() {
-#if BEEPER_PIN >= 0
-    // Disable TCx
+#if NUM_BEEPERS > 0
+#if NUM_BEEPERS > 1
+    // If any IO beeper is still playing, we can't stop the timer yet.
+    for (size_t i = 0; i < NUM_BEEPERS; i++) {
+        if (beepers[i]->getOutputType() == 1 && beepers[i]->isPlaying()) {
+            HAL::tone(0);
+            return;
+        }
+    }
+#endif
     TONE_TC->COUNT16.CTRLA.reg &= ~TC_CTRLA_ENABLE;
-    while (TONE_TC->COUNT16.SYNCBUSY.bit.ENABLE) {}
+    while (TONE_TC->COUNT16.SYNCBUSY.bit.ENABLE) { }
     TONE_TC->COUNT16.CTRLA.reg = TC_CTRLA_SWRST; // Reset timer
-    while (TONE_TC->COUNT16.SYNCBUSY.bit.ENABLE) {}
-    while (TONE_TC->COUNT16.CTRLA.bit.SWRST) {}
-    WRITE(BEEPER_PIN, 0);
+    while (TONE_TC->COUNT16.SYNCBUSY.bit.ENABLE) { }
+    while (TONE_TC->COUNT16.CTRLA.bit.SWRST) { }
 #endif
 }
 

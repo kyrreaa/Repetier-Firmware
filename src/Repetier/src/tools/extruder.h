@@ -58,7 +58,7 @@ public:
         , maxSpeed(_maxSpeed)
         , acceleration(_acceleration)
         , advance(_advance)
-        , diameter(dia) {}
+        , diameter(dia) { }
     void reset(float offx, float offy, float offz, float diameter, float resolution, float yank, float maxSpeed, float acceleration, float advance);
     virtual bool supportsTemperatures() final override { return true; }
     /// Called when the tool gets activated.
@@ -92,12 +92,13 @@ public:
     void directionMotor(bool dir) final;
     void setResolution(float stepspermm) { stepsPerMM = stepspermm; }
     float getResolution() { return stepsPerMM; }
-    void retract(bool backwards, bool longRetract) {
-        // TODO: Add retract handling
-    }
+#if FEATURE_RETRACTION
+    virtual void retract(bool backwards, bool longRetract) override;
+#endif
     /// Computes intensity based on speed
     virtual int computeIntensity(float v, bool activeSecondary, int intensity, float intensityPerMM) { return intensity; }
     virtual bool secondaryIsFan() final override { return true; }
+    virtual bool isSecondaryMove(bool isG0, bool isEMove) final override { return (!isG0 || isEMove); }
     virtual ToolTypes getToolType() override { return ToolTypes::EXTRUDER; }
 };
 

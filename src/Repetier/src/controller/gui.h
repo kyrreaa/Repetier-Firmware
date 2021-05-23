@@ -23,20 +23,29 @@
 #define GUI_DIRECT_ACTION_TOGGLE_LIGHT 17
 #define GUI_DIRECT_ACTION_DISABLE_MOTORS 18
 #define GUI_DIRECT_ACTION_MOUNT_SD_CARD 19
-#define GUI_DIRECT_ACTION_STOP_SD_PRINT 20
-#define GUI_DIRECT_ACTION_PAUSE_SD_PRINT 21
-#define GUI_DIRECT_ACTION_CONTINUE_SD_PRINT 22
+#define GUI_DIRECT_ACTION_STOP_PRINT 20
+#define GUI_DIRECT_ACTION_PAUSE_PRINT 21
+#define GUI_DIRECT_ACTION_CONTINUE_PRINT 22
 #define GUI_DIRECT_ACTION_POWERLOSS 23
-#define GUI_DIRECT_ACTION_TOGGLE_SOUNDS 24
-#define GUI_DIRECT_ACTION_DITTO_OFF 25
-#define GUI_DIRECT_ACTION_DITTO_MIRROR 26
-#define GUI_DIRECT_ACTION_DITTO_2 27
-#define GUI_DIRECT_ACTION_DITTO_3 28
-#define GUI_DIRECT_ACTION_DITTO_4 29
-#define GUI_DIRECT_ACTION_DITTO_5 30
-#define GUI_DIRECT_ACTION_DITTO_6 31
-#define GUI_DIRECT_ACTION_DITTO_7 32
-#define GUI_DIRECT_ACTION_DITTO_8 33
+#define GUI_DIRECT_ACTION_DITTO_OFF 24
+#define GUI_DIRECT_ACTION_DITTO_MIRROR 25
+#define GUI_DIRECT_ACTION_DITTO_2 26
+#define GUI_DIRECT_ACTION_DITTO_3 27
+#define GUI_DIRECT_ACTION_DITTO_4 28
+#define GUI_DIRECT_ACTION_DITTO_5 29
+#define GUI_DIRECT_ACTION_DITTO_6 30
+#define GUI_DIRECT_ACTION_DITTO_7 31
+#define GUI_DIRECT_ACTION_DITTO_8 32
+#define GUI_DIRECT_ACTION_TOGGLE_PROBE_PAUSE 33
+#define GUI_DIRECT_ACTION_TOGGLE_AUTORETRACTIONS 34
+#define GUI_DIRECT_ACTION_TOGGLE_ENCODER_AFFECT_MENUS_BY_SPEED 35
+#define GUI_EXIT_FATAL 36
+
+enum class GUIBootState {
+    DISPLAY_INIT = 0,
+    IN_INTRO = 1,
+    READY = 2
+};
 
 enum class GUIAction {
     NONE = 0,
@@ -71,17 +80,21 @@ enum class GUIStatusLevel {
     WARNING = 3, // Popup warning
     ERROR = 4    // Popup error
 };
-
 typedef void (*GuiCallback)(GUIAction action, void* data);
 
 extern void startScreen(GUIAction action, void* data);
 extern void printProgress(GUIAction action, void* data);
+extern void probeProgress(GUIAction action, void* data);
 extern void mainMenu(GUIAction action, void* data);
 extern void startScreen(GUIAction action, void* data);
 extern void warningScreen(GUIAction action, void* data);
+extern void warningScreenP(GUIAction action, void* data);
 extern void errorScreen(GUIAction action, void* data);
+extern void errorScreenP(GUIAction action, void* data);
 extern void infoScreen(GUIAction action, void* data);
+extern void infoScreenP(GUIAction action, void* data);
 extern void waitScreen(GUIAction action, void* data);
+extern void waitScreenP(GUIAction action, void* data);
 extern void directAction(GUIAction action, void* data);
 extern void selectToolAction(GUIAction action, void* data);
 
@@ -111,21 +124,22 @@ extern void selectToolAction(GUIAction action, void* data);
         GUI::contentChanged = true; \
     }
 #define UI_ERROR(status) \
-    {}
+    { }
 #define UI_ERROR_P(status) \
-    {}
+    { }
 #define UI_ERROR_UPD(status) \
-    {}
+    { }
 #define UI_ERROR_RAM(status) \
-    {}
+    { }
 #define UI_ERROR_UPD_RAM(status) \
-    {}
+    { }
 
 #define UI_CLEAR_STATUS \
     { \
         GUI::clearStatus(); \
     }
 
+struct probeProgInfo;
 class GUI {
 public:
     static int level;                            // Menu level for back handling
@@ -138,6 +152,7 @@ public:
     static GUIPageType pageType[GUI_MAX_LEVEL];  ///< page type
     static millis_t lastRefresh;                 ///< Last refresh time
     static millis_t lastAction;                  ///< Last action time for autoreturn to display
+    static GUIBootState curBootState;            ///< GUI boot sequence state
     static bool contentChanged;                  ///< set to true if forced refresh is wanted
     static char status[MAX_COLS + 1];            ///< Status Line
     static char buf[MAX_COLS + 1];               ///< Buffer to build strings
@@ -145,14 +160,26 @@ public:
     static fast8_t bufPos;                       ///< Pos for appending data
     static GUIAction nextAction;                 ///< Next action to execute on opdate
     static int nextActionRepeat;                 ///< Increment for next/previous
+#if ENCODER_MAX_REPEAT_STEPS != 0
+    static bool speedAffectMenus;           ///< Apply encoder step speed to menus
+    static uint8_t maxActionRepeatStep;     ///< Max amount of extra encoder repeat steps
+    static uint16_t maxActionRepeatTimeMS;  ///< Clicks longer than this will not recieve any extra steps
+    static uint16_t minActionRepeatTimeMS;  ///
+    static millis_t lastActionRepeatDiffMS; ///< Just used to display the time diff in the encoder speed menu
+#endif
+
+    static uint16_t eprStart;
     static GUIStatusLevel statusLevel;
+    static bool textIsScrolling;
+    static probeProgInfo* curProbingProgress; ///< Pointer to a valid current probing datastruct
 #if SDSUPPORT
     static char cwd[SD_MAX_FOLDER_DEPTH * LONG_FILENAME_LENGTH + 2];
     static uint8_t folderLevel;
+    static sd_file_t cwdFile;
 #endif
 
     static void bufClear();
-    static void bufAddInt(int value, uint8_t digits, char fillChar = ' ');
+    static void bufAddInt(int value, int8_t digits, char fillChar = ' ');
     static void bufAddLong(long value, int8_t digits);
     static void bufAddFloat(float value, int8_t fixdigits, int8_t digits);
     static void bufAddString(char* value);
@@ -164,6 +191,7 @@ public:
 
     static void flashToString(char* dest, FSTRINGPARAM(text));
     static void flashToStringLong(char* dest, FSTRINGPARAM(text), int32_t val);
+    static void flashToStringFloat(char* dest, FSTRINGPARAM(text), float val, int prec = 0);
     static void flashToStringFlash(char* dest, FSTRINGPARAM(text), FSTRINGPARAM(val));
     static void flashToStringString(char* dest, FSTRINGPARAM(text), char* val);
 
@@ -171,23 +199,28 @@ public:
     static void setStatusP(FSTRINGPARAM(text), GUIStatusLevel lvl);
     static void setStatus(char* text, GUIStatusLevel lvl);
 
-    static void resetMenu(); ///< Go to start page
-    static void init();      ///< Initialize display
-    static void refresh();   ///< Refresh display
-    static void update();    ///< Calls refresh, checks buttons
-    static void pop();       ///< Go 1 level higher if possible
-    static void popBusy();   ///< Pop if waiting is on top
+    static void resetMenu();        ///< Go to start page
+    static void init();             ///< Initialize GUI class (eeprom etc)
+    static void driverInit();       ///< Driver specific inits
+    static void processInit();      ///< Continue initializing display if not ready
+    static void refresh();          ///< Refresh display
+    static void update();           ///< Calls refresh, checks buttons
+    static void pop();              ///< Go 1 level higher if possible
+    static void pop(int selection); // For prompt callbacks!
+    static void popAll();
+    static void popBusy(); ///< Pop if waiting is on top
     static void push(GuiCallback cb, void* cData, GUIPageType tp);
     static void replace(GuiCallback cb, void* cData, GUIPageType tp);
     static bool isStickyPageType(GUIPageType t);
+    static void resetEeprom();
+    static void eepromHandle();
 
     // Run action for key press
     static void backKey();
     static void nextKey();
     static void previousKey();
     static void okKey();
-    static void setEncoderA(fast8_t state);
-    static void setEncoderB(fast8_t state);
+    static void setEncoder();
     static void handleKeypress();
     static void replaceOn(GUIAction a, GuiCallback cb, void* cData, GUIPageType tp);
     static void pushOn(GUIAction a, GuiCallback cb, void* cData, GUIPageType tp);
@@ -195,7 +228,7 @@ public:
     // Draw menu functions - driver specific
 
     static void menuStart(GUIAction action);
-    static void menuEnd(GUIAction action);
+    static void menuEnd(GUIAction action, bool scrollbar = true, bool affectedBySpeed = true);
     static void menuTextP(GUIAction& action, PGM_P text, bool highlight = false);
     static void menuFloatP(GUIAction& action, PGM_P text, float val, int precision, GuiCallback cb, void* cData, GUIPageType tp);
     static void menuLongP(GUIAction& action, PGM_P text, long val, GuiCallback cb, void* cData, GUIPageType tp);
@@ -209,13 +242,38 @@ public:
     static void menuSelectable(GUIAction& action, char* text, GuiCallback cb, void* cData, GUIPageType tp);
     static void menuBack(GUIAction& action);
 
+    static void resetScrollbarTimer();
+    static void showScrollbar(GUIAction& action);
+    static void showScrollbar(GUIAction& action, float percent, uint16_t min, uint16_t max);
+
     // Value modifyer display
 
     // Draw display with content for a value given as string
     static void showValueP(PGM_P text, PGM_P unit, char* value);
     static void showValue(char* text, PGM_P unit, char* value);
     static bool handleFloatValueAction(GUIAction& action, float& value, float min, float max, float increment);
+    static bool handleFloatValueAction(GUIAction& action, float& value, float increment);
     static bool handleLongValueAction(GUIAction& action, int32_t& value, int32_t min, int32_t max, int32_t increment);
+    static void menuAffectBySpeed(GUIAction& action);
+    static INLINE uint8_t isGUIIdle() {
+        return (HAL::timeInMilliseconds() - lastAction) > UI_AUTORETURN_TO_MENU_AFTER ? 1 : 0;
+    }
+};
+
+struct probeProgInfo {
+    explicit probeProgInfo(const float& _x, const float& _y, const float& _z, const uint16_t& _num, const uint16_t _maxNum)
+        : x(_x)
+        , y(_y)
+        , z(_z)
+        , num(_num)
+        , maxNum(_maxNum) {
+        GUI::curProbingProgress = this;
+    }
+    const float &x, &y, &z;
+    const uint16_t &num, maxNum;
+    ~probeProgInfo() {
+        GUI::curProbingProgress = nullptr;
+    }
 };
 
 #define DRAW_FLOAT_P(text, unit, val, prec) \

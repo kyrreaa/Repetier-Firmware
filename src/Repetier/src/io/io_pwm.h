@@ -41,10 +41,12 @@
 
 #undef IO_PWM_SOFTWARE
 #undef IO_PWM_KICKSTART
+#undef IO_PWM_RAMP
 #undef IO_PDM_SOFTWARE
 #undef IO_PWM_FAKE
 #undef IO_PWM_SWITCH
 #undef IO_PWM_HARDWARE
+#undef IO_PWM_DAC
 #undef IO_PWM_MIN_SPEED
 #undef IO_PWM_INVERTED
 #undef IO_PWM_REPORT
@@ -55,6 +57,10 @@
 #define IO_PWM_HARDWARE(name, pinid, frequency) \
     name.id = HAL::initHardwarePWM(pinid, frequency); \
     HAL::setHardwarePWM(name.id, name.pwm);
+
+#define IO_PWM_DAC(name, dacPin) \
+    name.id = HAL::initHardwareDAC(dacPin); \
+    HAL::setHardwareDAC(name.id, name.val);
 
 #elif IO_TARGET == IO_TARGET_PWM // PWM interrupt
 
@@ -79,13 +85,25 @@
 
 #elif IO_TARGET == IO_TARGET_100MS // 100ms
 
-#define IO_PWM_KICKSTART(name, pwmname, timems, treshold) \
+#define IO_PWM_KICKSTART(name, pwmname, time100ms, treshold) \
     if (name.kickcount > 0) { \
         if (--name.kickcount == 0) { \
             pwmname.set(name.pwm); \
         } \
     }
 
+#define IO_PWM_RAMP(name, pwmname, upDelay100ms, downDelay100ms, difThreshold) \
+    if (name.realPwm != name.targPwm) { \
+        if (!GCode::hasFatalError()) { \
+            name.realPwm = RMath::min(RMath::max((name.realPwm + (name.targPwm > name.realPwm ? name.steps : -name.steps)), static_cast<uint16_t>(0u)), static_cast<uint16_t>(255u << name.scale)); \
+            if (abs(name.realPwm - name.targPwm) <= name.steps) { \
+                name.realPwm = name.targPwm; \
+            } \
+            pwmname.set(name.realPwm >> name.scale); \
+        } else { \
+            pwmname.set((name.realPwm = name.targPwm) >> name.scale); \
+        } \
+    }
 #elif IO_TARGET == IO_TARGET_CLASS_DEFINITION // class
 
 #define IO_PWM_SOFTWARE(name, pinname, speed) \
@@ -98,6 +116,8 @@
             , val(0) {} \
         void set(fast8_t _pwm) final { pwm = _pwm; } \
         fast8_t get() final { return pwm; } \
+        void setFreq(uint32_t _freq) final {}; \
+        uint32_t getFreq() { return speed; } \
     }; \
     extern name##Class<pinname> name;
 
@@ -111,6 +131,8 @@
             , error(0) {} \
         void set(fast8_t _pwm) final { pwm = _pwm; } \
         fast8_t get() final { return pwm; } \
+        void setFreq(uint32_t _freq) final {}; \
+        uint32_t getFreq() final { return error; } \
     }; \
     extern name##Class<pinname> name;
 
@@ -118,10 +140,14 @@
     class name##Class : public PWMHandler { \
     public: \
         fast8_t pwm; \
+        uint32_t freq; \
         name##Class() \
-            : pwm(0) {} \
+            : pwm(0) \
+            , freq(0) {} \
         void set(fast8_t _pwm) final { pwm = _pwm; } \
         fast8_t get() final { return pwm; } \
+        void setFreq(uint32_t _freq) final { freq = _freq; } \
+        uint32_t getFreq() final { return freq; } \
     }; \
     extern name##Class name;
 
@@ -137,6 +163,8 @@
             pinname::set(_pwm >= onLevel); \
         } \
         fast8_t get() final { return pwm; } \
+        void setFreq(uint32_t _freq) final { pwmname.setFreq(_freq); } \
+        uint32_t getFreq() final { return pwmname.getFreq(); } \
     }; \
     extern name##Class<pinname> name;
 
@@ -144,17 +172,44 @@
     class name##Class : public PWMHandler { \
     public: \
         fast8_t pwm, id; \
+        uint32_t freq; \
         name##Class() \
             : pwm(0) \
-            , id(-1) {} \
+            , id(-1) \
+            , freq(frequency) {} \
         void set(fast8_t _pwm) final { \
-            if (pwm == _pwm) { \
-                return; \
+            if (_pwm != pwm) { \
+                pwm = _pwm; \
+                HAL::setHardwarePWM(id, pwm); \
             } \
-            pwm = _pwm; \
-            HAL::setHardwarePWM(id, pwm); \
         } \
         fast8_t get() final { return pwm; } \
+        void setFreq(uint32_t _freq) final { \
+            if (_freq != freq) { \
+                freq = _freq; \
+                HAL::setHardwareFrequency(id, freq); \
+            } \
+        } \
+        uint32_t getFreq() final { return freq; } \
+    }; \
+    extern name##Class name;
+
+#define IO_PWM_DAC(name, dacPin) \
+    class name##Class : public PWMHandler { \
+    public: \
+        fast8_t val, id; \
+        name##Class() \
+            : val(0) \
+            , id(-1) { } \
+        void set(fast8_t _val) final { \
+            if (_val != val) { \
+                val = _val; \
+                HAL::setHardwareDAC(id, val); \
+            } \
+        } \
+        fast8_t get() final { return val; } \
+        void setFreq(uint32_t _freq) final {}; \
+        uint32_t getFreq() final { return 0ul; } \
     }; \
     extern name##Class name;
 
@@ -172,6 +227,8 @@
             } \
         } \
         fast8_t get() final { return pwmname.get(); } \
+        void setFreq(uint32_t _freq) final { pwmname.setFreq(_freq); } \
+        uint32_t getFreq() final { return pwmname.getFreq(); } \
     }; \
     extern name##Class name;
 
@@ -191,6 +248,8 @@
             } \
         } \
         fast8_t get() final { return pwm; } \
+        void setFreq(uint32_t _freq) final { pwmname.setFreq(_freq); } \
+        uint32_t getFreq() final { return pwmname.getFreq(); } \
     }; \
     extern name##Class name;
 
@@ -202,7 +261,9 @@
             : pwm(0) \
             , kickcount(0) {} \
         void set(fast8_t _pwm) final { \
-            if (kickcount == 0 && _pwm < treshold && _pwm > 0 && time100ms > 0) { \
+            if (kickcount == 0 && _pwm < treshold \
+                && (pwm == 0 && _pwm > 0) \
+                && time100ms > 0) { \
                 pwm = _pwm; \
                 kickcount = time100ms; \
                 pwmname.set(255); \
@@ -214,6 +275,40 @@
             } \
         } \
         fast8_t get() final { return pwm; } \
+        void setFreq(uint32_t _freq) final { pwmname.setFreq(_freq); } \
+        uint32_t getFreq() final { return pwmname.getFreq(); } \
+    }; \
+    extern name##Class name;
+
+#define IO_PWM_RAMP(name, pwmname, upDelay100ms, downDelay100ms, difThreshold) \
+    class name##Class : public PWMHandler { \
+    public: \
+        const int scale = 8; \
+        uint16_t steps, realPwm, targPwm; \
+        name##Class() \
+            : steps(0) \
+            , realPwm(0) \
+            , targPwm(0) {} \
+        void set(fast8_t _pwm) final { \
+            if (_pwm != (targPwm >> scale)) { \
+                targPwm = (static_cast<uint16_t>(_pwm) << scale); \
+                if (difThreshold && (abs(realPwm - targPwm) >> scale) <= difThreshold) { \
+                    realPwm = targPwm; \
+                    pwmname.set(_pwm); \
+                } else { \
+                    uint16_t timeDiv = targPwm > realPwm ? upDelay100ms : downDelay100ms; \
+                    if (timeDiv) { \
+                        steps = (abs(realPwm - targPwm) * (1 << scale)) / (timeDiv << scale); \
+                    } else { \
+                        realPwm = targPwm; \
+                        pwmname.set(_pwm); \
+                    } \
+                } \
+            } \
+        } \
+        fast8_t get() final { return pwmname.get(); } \
+        void setFreq(uint32_t _freq) final { pwmname.setFreq(_freq); } \
+        uint32_t getFreq() final { return pwmname.getFreq(); } \
     }; \
     extern name##Class name;
 
@@ -225,8 +320,11 @@
             pwmname.set(255 - _pwm); \
         } \
         fast8_t get() final { return 255 - pwmname.get(); } \
+        void setFreq(uint32_t _freq) final { pwmname.setFreq(_freq); } \
+        uint32_t getFreq() final { return pwmname.getFreq(); } \
     }; \
     extern name##Class name;
+
 #define IO_PWM_REPORT(name, pwmname) \
     class name##Class : public PWMHandler { \
 \
@@ -238,6 +336,13 @@
             } \
         } \
         fast8_t get() final { return pwmname.get(); } \
+        void setFreq(uint32_t _freq) final { \
+            if (getFreq() != _freq) { \
+                pwmname.setFreq(_freq); \
+                Com::printFLN(PSTR(#name) "=", (int)_freq); \
+            } \
+        } \
+        uint32_t getFreq() final { return pwmname.getFreq(); } \
     }; \
     extern name##Class name;
 
@@ -258,11 +363,18 @@
 #define IO_PWM_HARDWARE(name, pinid, frequency) \
     name##Class name;
 
+#define IO_PWM_DAC(name, dacPin) \
+    name##Class name;
+
 #define IO_PWM_MIN_SPEED(name, pwmname, minValue, offBelow) \
     name##Class name;
 
-#define IO_PWM_KICKSTART(name, pwmname, timems, treshold) \
+#define IO_PWM_KICKSTART(name, pwmname, time100ms, treshold) \
     name##Class name;
+
+#define IO_PWM_RAMP(name, pwmname, upDelay100ms, downDelay100ms, difThreshold) \
+    name##Class name;
+
 #define IO_PWM_INVERTED(name, pwmname) \
     name##Class name;
 
@@ -289,11 +401,17 @@
 #ifndef IO_PWM_HARDWARE
 #define IO_PWM_HARDWARE(name, pinid, frequency)
 #endif
+#ifndef IO_PWM_DAC
+#define IO_PWM_DAC(name, dacPin)
+#endif
 #ifndef IO_PWM_MIN_SPEED
 #define IO_PWM_MIN_SPEED(name, pwmname, minValue, offBelow)
 #endif
 #ifndef IO_PWM_KICKSTART
-#define IO_PWM_KICKSTART(name, pwmname, timems, treshold)
+#define IO_PWM_KICKSTART(name, pwmname, time100ms, treshold)
+#endif
+#ifndef IO_PWM_RAMP
+#define IO_PWM_RAMP(name, pwmname, upDelay100ms, downDelay100ms, difThreshold)
 #endif
 #ifndef IO_PWM_INVERTED
 #define IO_PWM_INVERTED(name, pwmname)

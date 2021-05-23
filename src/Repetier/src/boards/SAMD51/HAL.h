@@ -291,8 +291,7 @@ extern Uart Serial3;
 extern Uart Serial4;
 
 #ifndef RFSERIAL
-#define RFSERIAL Serial // Programming port of the due
-//#define RFSERIAL SerialUSB  // Native USB Port of the due
+#define RFSERIAL Serial
 #endif
 
 #if defined(BLUETOOTH_SERIAL) && BLUETOOTH_SERIAL > 0
@@ -304,10 +303,6 @@ extern Uart Serial4;
 #define BT_SERIAL Serial3
 #elif BLUETOOTH_SERIAL == 4
 #define BT_SERIAL Serial4
-#elif BLUETOOTH_SERIAL == 100
-#define BT_SERIAL Serial
-#elif BLUETOOTH_SERIAL == 101
-#define BT_SERIAL SerialUSB
 #else
 #error Unsupported value for BLUETOOTH_SERIAL
 #endif
@@ -330,6 +325,7 @@ extern millis_t eprSyncTime;
 extern void FEUpdateChanges(void);
 extern void FEInit(void);
 #endif
+extern void analogInit(void);
 
 class HAL {
 public:
@@ -337,6 +333,8 @@ public:
     // as long as hal eeprom functions are used.
     static char virtualEeprom[EEPROM_BYTES];
     static bool wdPinged;
+    static uint8_t i2cError;
+    static BootReason startReason;
 
     HAL();
     virtual ~HAL();
@@ -348,14 +346,22 @@ public:
     static int initHardwarePWM(int pinNumber, uint32_t frequency);
     // Set pwm output to value. id is id from initHardwarePWM.
     static void setHardwarePWM(int id, int value);
+    // Set pwm frequency to value. id is id from initHardwarePWM.
+    static void setHardwareFrequency(int id, uint32_t frequency);
+    // Initalize hardware DAC control on dacPin if supported.
+    // Returns internal id if it succeeds or -1 if it fails.
+    static fast8_t initHardwareDAC(fast8_t dacPin);
+    // Set the DAC output to value. id is from initHardwareDAC.
+    static void setHardwareDAC(fast8_t id, fast8_t value);
     // do any hardware-specific initialization here
     static inline void hwSetup(void) {
+        updateStartReason();
 #if !FEATURE_WATCHDOG
         // Disable watchdog
-        REG_WDT_CTRLA = 0;                  // Disable the WDT
-        while (WDT->SYNCBUSY.bit.ENABLE) {} // Wait for synchronization
+        REG_WDT_CTRLA = 0;                   // Disable the WDT
+        while (WDT->SYNCBUSY.bit.ENABLE) { } // Wait for synchronization
 #endif
-
+        analogInit();
 #if defined(TWI_CLOCK_FREQ) && TWI_CLOCK_FREQ > 0 //init i2c if we have a frequency
         HAL::i2cInit(TWI_CLOCK_FREQ);
 #endif
@@ -393,8 +399,11 @@ public:
     static inline void pinMode(uint8_t pin, uint8_t mode) {
         if (mode == INPUT) {
             SET_INPUT(pin);
-        } else
+        } else if (mode == INPUT_PULLUP) {
+            PULLUP(pin, HIGH);
+        } else {
             SET_OUTPUT(pin);
+        }
     }
     static INLINE void delayMicroseconds(uint32_t usec) { //usec += 3;
         ::delayMicroseconds(usec);
@@ -410,7 +419,7 @@ public:
 #endif
         }
     }
-    static void tone(int frequency);
+    static void tone(uint32_t frequency);
     static void noTone();
 
 #if EEPROM_AVAILABLE == EEPROM_SDCARD || EEPROM_AVAILABLE == EEPROM_FLASH
@@ -601,12 +610,16 @@ public:
     static inline int16_t readFlashWord(PGM_P ptr) {
         return pgm_read_word(ptr);
     }
-
+    static inline const void* readFlashAddress(const void* adr) {
+        return (*((const void**)adr));
+    }
     static inline void serialSetBaudrate(long baud) {
         // Serial.setInterruptPriority(1);
 #if defined(BLUETOOTH_SERIAL) && BLUETOOTH_SERIAL > 0
+        RFSERIAL2.end();
         RFSERIAL2.begin(baud);
 #endif
+        RFSERIAL.end();
         RFSERIAL.begin(baud);
     }
     static inline void serialFlush() {
@@ -616,6 +629,8 @@ public:
         RFSERIAL.flush();
     }
     static void setupTimer();
+    static void handlePeriodical();
+    static void updateStartReason();
     static void showStartReason();
     static int getFreeRam();
     static void resetHardware();
@@ -624,7 +639,7 @@ public:
     static void spiBegin(uint32_t clock, uint8_t mode, uint8_t msbfirst);
     static uint8_t spiTransfer(uint8_t);
 #ifndef USE_ARDUINO_SPI_LIB
-    static void spiEnd() {}
+    static void spiEnd() { }
 #else
     static void spiEnd();
 #endif
@@ -646,24 +661,25 @@ public:
         while (WDT->SYNCBUSY.bit.ENABLE)
             ; // Wait for synchronization
     };
-    inline static void stopWatchdog() {}
+    inline static void stopWatchdog() { }
     inline static void pingWatchdog() {
 #if FEATURE_WATCHDOG
         wdPinged = true;
 #endif
     };
 
-#if NUM_SERVOS > 0
     static unsigned int servoTimings[4];
     static void servoMicroseconds(uint8_t servo, int ms, uint16_t autoOff);
-#endif
 
     static void analogStart(void);
     static int analogRead(int channel);
     static void analogEnable(int channel);
-    static void reportHALDebug() {}
+    static void reportHALDebug() { }
     static volatile uint8_t insideTimer1;
     static void switchToBootMode();
+
+private:
+    static void analogInit(void);
 };
 
 #endif // HAL_H

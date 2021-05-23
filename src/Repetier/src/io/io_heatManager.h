@@ -20,6 +20,7 @@
 #undef HEAT_MANAGER_PID
 #undef HEAT_MANAGER_DYN_DEAD_TIME
 #undef HEAT_MANAGER_PELTIER_PID
+#undef HEAT_MANAGER_DEFINE_HYSTERESIS
 
 #if IO_TARGET == IO_TARGET_PERIODICAL_ACTIONS // periodical action
 
@@ -29,7 +30,7 @@
     name.update();
 #define HEAT_MANAGER_PELTIER_PID(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable, pType, flowPin, minTemp) \
     name.update();
-#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, time1, up1, down1, time2, up2, down2, hotPlugable) \
+#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, temp1, timeUp1, timeDown1, temp2, timeUp2, timeDown2, hotPlugable) \
     name.update();
 
 #elif IO_TARGET == IO_TARGET_INIT // init
@@ -43,8 +44,11 @@
 #define HEAT_MANAGER_PELTIER_PID(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable, pType, flowPin, minTemp) \
     name.init();
 
-#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, time1, up1, down1, time2, up2, down2, hotPlugable) \
+#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, temp1, timeUp1, timeDown1, temp2, timeUp2, timeDown2, hotPlugable) \
     name.init();
+
+#define HEAT_MANAGER_DEFINE_HYSTERESIS(name, hysteresisTemperature, hysteresisTime, maxWait) \
+    name.initHysteresis(hysteresisTemperature, hysteresisTime, maxWait);
 
 #elif IO_TARGET == IO_TARGET_CLASS_DEFINITION
 
@@ -54,7 +58,7 @@
     extern HeatManagerPID name;
 #define HEAT_MANAGER_PELTIER_PID(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable, pType, flowPin, minTemp) \
     extern HeatManagerPeltierPID<flowPin, pType, minTemp> name;
-#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, time1, up1, down1, time2, up2, down2, hotPlugable) \
+#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, temp1, timeUp1, timeDown1, temp2, timeUp2, timeDown2, hotPlugable) \
     extern HeatManagerDynDeadTime name;
 
 #elif IO_TARGET == IO_TARGET_DEFINE_VARIABLES
@@ -68,21 +72,23 @@
 #define HEAT_MANAGER_PELTIER_PID(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable, pType, flowPin, minTemp) \
     HeatManagerPeltierPID<flowPin, pType, minTemp> name(tp, index, &input, &output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable);
 
-#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, time1, up1, down1, time2, up2, down2, hotPlugable) \
-    HeatManagerDynDeadTime name(tp, index, &input, &output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, time1, up1, down1, time2, up2, down2, hotPlugable);
+#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, temp1, timeUp1, timeDown1, temp2, timeUp2, timeDown2, hotPlugable) \
+    HeatManagerDynDeadTime name(tp, index, &input, &output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, temp1, timeUp1, timeDown1, temp2, timeUp2, timeDown2, hotPlugable);
 
 #elif IO_TARGET == IO_TARGET_RESTORE_FROM_CONFIG // restore from config
 
 #define HEAT_MANAGER_BANG_BANG(name, tp, index, input, output, maxTemp, maxPwm, decVariance, decPeriod, hotPlugable) \
-    name.resetFromConfig(maxPwm, decVariance, decPeriod);
+    name.resetFromConfig(maxPwm, maxTemp, decVariance, decPeriod);
 #define HEAT_MANAGER_PID(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable) \
-    name.resetFromConfig(maxPwm, decVariance, decPeriod, p, i, d, driveMin, driveMax);
+    name.resetFromConfig(maxPwm, maxTemp, decVariance, decPeriod, p, i, d, driveMin, driveMax);
 #define HEAT_MANAGER_PELTIER_PID(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable, pType, flowPin, minTemp) \
-    name.resetFromConfig(maxPwm, decVariance, decPeriod, p, i, d, driveMin, driveMax);
-#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, time1, up1, down1, time2, up2, down2, hotPlugable) \
-    name.resetFromConfig(maxPwm, decVariance, decPeriod, time1, up1, down1, time2, up2, down2);
+    name.resetFromConfig(maxPwm, maxTemp, decVariance, decPeriod, p, i, d, driveMin, driveMax);
+#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, temp1, timeUp1, timeDown1, temp2, timeUp2, timeDown2, hotPlugable) \
+    name.resetFromConfig(maxPwm, maxTemp, decVariance, decPeriod, temp1, timeUp1, timeDown1, temp2, timeUp2, timeDown2);
+#define HEAT_MANAGER_DEFINE_HYSTERESIS(name, hysteresisTemperature, hysteresisTime, maxWait) \
+    name.initHysteresis(hysteresisTemperature, hysteresisTime, maxWait);
 
-#elif IO_TARGET == IO_TARGET_TOOLS_TEMPLATES // template definitions in tools.cpp
+#elif IO_TARGET == IO_TARGET_TEMPLATES // template definitions in tools.cpp
 
 #define HEAT_MANAGER_PELTIER_PID(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable, pType, flowPin, minTemp) \
     template class HeatManagerPeltierPID<flowPin, pType, minTemp>;
@@ -99,5 +105,9 @@
 #define HEAT_MANAGER_PELTIER_PID(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, p, i, d, driveMin, driveMax, hotPlugable, pType, flowPin, minTemp)
 #endif
 #ifndef HEAT_MANAGER_DYN_DEAD_TIME
-#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, sampleTime, maxPwm, decVariance, decPeriod, time1, up1, down1, time2, up2, down2, hotPlugable)
+#define HEAT_MANAGER_DYN_DEAD_TIME(name, tp, index, input, output, maxTemp, maxPwm, sampleTime, decVariance, decPeriod, temp1, timeUp1, timeDown1, temp2, timeUp2, timeDown2, hotPlugable)
+#endif
+
+#ifndef HEAT_MANAGER_DEFINE_HYSTERESIS
+#define HEAT_MANAGER_DEFINE_HYSTERESIS(name, hysteresisTemperature, hysteresisTime, maxWait)
 #endif

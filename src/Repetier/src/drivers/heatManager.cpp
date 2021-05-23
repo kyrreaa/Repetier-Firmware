@@ -1,6 +1,12 @@
 #include "Repetier.h"
 
 HeatManager* heaters[] = HEATERS;
+#if CPU_ARCH == ARCH_AVR
+constexpr int numHeaters = NUM_HEATERS;
+#else
+constexpr int numHeaters = std::extent<decltype(heaters)>::value;
+static_assert(numHeaters == NUM_HEATERS, "NUM_HEATERS not defined correctly");
+#endif
 
 // HeatManager instance pointer as data
 void menuSetTemperature(GUIAction action, void* data) {
@@ -8,7 +14,7 @@ void menuSetTemperature(GUIAction action, void* data) {
     HeatManager* hm = reinterpret_cast<HeatManager*>(data);
     float value = hm->getTargetTemperature();
     DRAW_FLOAT_P(PSTR("Target Temperature:"), Com::tUnitDegCelsius, value, 0);
-    if (GUI::handleFloatValueAction(action, value, hm->getMinTemperature(), hm->getMaxTemperature(), 1)) {
+    if (GUI::handleFloatValueAction(action, value, hm->getMinTemperature(), hm->getMaxTemperature(), 1.0f)) {
         hm->setTargetTemperature(value);
     }
 #endif
@@ -18,6 +24,22 @@ void menuDisableTemperature(GUIAction action, void* data) {
 #if FEATURE_CONTROLLER != NO_CONTROLLER
     HeatManager* hm = reinterpret_cast<HeatManager*>(data);
     hm->setTargetTemperature(hm->getMinTemperature());
+    // Now remove the Disable button & move the display up if needed.
+    GUI::cursorRow[GUI::level]--;
+    if (GUI::topRow[GUI::level]) {
+        GUI::topRow[GUI::level]--;
+    }
+#endif
+}
+
+static int newTemp = 0;
+void menuSetTemperatureFixed(GUIAction action, void* data) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+    HeatManager* hm = reinterpret_cast<HeatManager*>(data);
+    hm->setTargetTemperature(newTemp);
+    // Now remove the Disable button & move the display up if needed.
+    GUI::cursorRow[GUI::level] = 1;
+    GUI::topRow[GUI::level] = 0;
 #endif
 }
 
@@ -25,9 +47,75 @@ void menuHMMaxPWM(GUIAction action, void* data) {
 #if FEATURE_CONTROLLER != NO_CONTROLLER
     HeatManager* hm = reinterpret_cast<HeatManager*>(data);
     float value = hm->getMaxPWM();
-    DRAW_FLOAT_P(PSTR("Max. PWM:"), Com::tUnitDegCelsius, value, 0);
+    DRAW_FLOAT_P(PSTR("Max. PWM:"), Com::tUnitPWM, value, 0);
     if (GUI::handleFloatValueAction(action, value, 1, 255, 1)) {
         hm->setMaxPWM(static_cast<uint8_t>(value));
+    }
+#endif
+}
+
+void menuHMSetMaxTemperature(GUIAction action, void* data) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+    HeatManager* hm = reinterpret_cast<HeatManager*>(data);
+    float value = hm->getMaxTemperature();
+    DRAW_FLOAT_P(PSTR("Max. Temperature:"), Com::tUnitDegCelsius, value, 0);
+    if (GUI::handleFloatValueAction(action, value, 0, 1000, 1)) {
+        hm->setMaxTemperature(value);
+    }
+#endif
+}
+
+void menuHMDecoupleVariance(GUIAction action, void* data) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+    HeatManager* hm = reinterpret_cast<HeatManager*>(data);
+    float value = hm->getDecoupleVariance();
+    DRAW_FLOAT_P(PSTR("Dec. variance:"), Com::tUnitDegCelsius, value, 0);
+    if (GUI::handleFloatValueAction(action, value, 0, 1000, 1)) {
+        hm->setDecoupleVariance(value);
+    }
+#endif
+}
+
+void menuHMDecouplePeriod(GUIAction action, void* data) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+    HeatManager* hm = reinterpret_cast<HeatManager*>(data);
+    int32_t value = hm->getDecouplePeriod();
+    DRAW_LONG_P(PSTR("Dec. max. period:"), Com::tUnitMilliSeconds, value);
+    if (GUI::handleLongValueAction(action, value, 0, 600000, 1000)) {
+        hm->setDecouplePeriod(value);
+    }
+#endif
+}
+
+void menuHMMaxWait(GUIAction action, void* data) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+    HeatManager* hm = reinterpret_cast<HeatManager*>(data);
+    int32_t value = hm->getMaxWait();
+    DRAW_LONG_P(PSTR("Max. wait f. target:"), Com::tUnitMilliSeconds, value);
+    if (GUI::handleLongValueAction(action, value, 0, 3600000, 1000)) {
+        hm->setMaxWait(value);
+    }
+#endif
+}
+
+void menuHMSetHysteresisTemperature(GUIAction action, void* data) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+    HeatManager* hm = reinterpret_cast<HeatManager*>(data);
+    float value = hm->getHysteresisTemperature();
+    DRAW_FLOAT_P(PSTR("Hyst. Temperature:"), Com::tUnitDegCelsius, value, 1);
+    if (GUI::handleFloatValueAction(action, value, 0, 20, 0.1f)) {
+        hm->setHysteresisTemperature(value);
+    }
+#endif
+}
+
+void menuHMSetHysteresisTime(GUIAction action, void* data) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+    HeatManager* hm = reinterpret_cast<HeatManager*>(data);
+    int32_t value = hm->getHysteresisTime();
+    DRAW_LONG_P(PSTR("Hysteresis:"), Com::tUnitMilliSeconds, value);
+    if (GUI::handleLongValueAction(action, value, 0, 3600000, 1000)) {
+        hm->setHysteresisTime(value);
     }
 #endif
 }
@@ -48,12 +136,15 @@ HeatManager::HeatManager(char htType, fast8_t _index, IOTemperature* i, PWMHandl
     , index(_index)
     , hotPluggable(_hotPluggable)
     , sampleTime(_sampleTime)
-    , flags(0) {
+    , flags(0)
+    , hysteresisTemperature(0)
+    , hysteresisTime(0)
+    , maxWait(0) {
     lastUpdate = 0;
 }
 
 void HeatManager::init() {
-    eepromPos = EEPROM::reserve(EEPROM_SIGNATURE_HEAT_MANAGER, 1, eepromSizeLocal() + 13);
+    eepromPos = EEPROM::reserve(EEPROM_SIGNATURE_HEAT_MANAGER, 1, eepromSizeLocal() + 25);
 }
 
 float HeatManager::getStatefulTemperature() { ///< Returns temp or -333 on defect, -444 on decoupled
@@ -82,29 +173,29 @@ void HeatManager::update() {
     if (errorCount > 0) {
         errorCount--;
     }
-    if (decoupleMode == CALIBRATING) {
+    if (decoupleMode == DecoupleMode::CALIBRATING) {
         setCurrentTemperature(input->get());
         return; // do not interfere with calibration
     }
-    if (decoupleMode == PAUSED) {
+    if (decoupleMode == DecoupleMode::PAUSED) {
         setCurrentTemperature(input->get());
         return; // do nothing in pause mode
     }
-    if (decoupleMode == UNPLUGGED) {
+    if (decoupleMode == DecoupleMode::UNPLUGGED) {
         if (input->isDefect()) {
             return;
         }
-        decoupleMode = NO_HEATING;
+        decoupleMode = DecoupleMode::NO_HEATING;
         Com::printF(PSTR("Heater "));
         printName();
-        Com::printFLN(PSTR(" plugged."));
+        Com::printFLN(PSTR(" plugged in."));
     }
     if (input->isDefect()) {
         if (hotPluggable) {
             setCurrentTemperature(0);
             // setTargetTemperature(0); // unplugged mode will prevent errors
             output->set(0);
-            decoupleMode = UNPLUGGED;
+            decoupleMode = DecoupleMode::UNPLUGGED;
             Com::printF(PSTR("Heater "));
             printName();
             Com::printFLN(PSTR(" unplugged."));
@@ -115,8 +206,8 @@ void HeatManager::update() {
             if (errorCount > 10) {
                 Com::printErrorF(PSTR("Heater "));
                 printName();
-                Com::printF(PSTR(" seems to be defect. Sensor reported unusual values. "));
-                Com::printFLN(PSTR("This can be a broken wire or a shorted contact of the sensor."));
+                Com::printF(PSTR(" may be defective. Sensor reported unusual values."));
+                Com::printFLN(PSTR(" This could mean a broken wire or a shorted contact on the sensor."));
                 setError(HeaterError::SENSOR_DEFECT);
                 GCode::fatalError(PSTR("Heater sensor defect"));
             }
@@ -138,9 +229,11 @@ void HeatManager::update() {
         if (decoupleMode == DecoupleMode::FAST_RISING) {
             if (currentTemperature - 1 < lastDecoupleTemp) {
                 // we waited and nothing happened, that is not ok
-                Com::printErrorFLN(PSTR("A heater did not rise while under full power, so we disabled the heater."));
-                Com::printErrorFLN(PSTR("If it is no hardware defect, the decoupling period might be set too low."));
-                Com::printErrorF(PSTR("No temperaure rise after (ms):"));
+                Com::printErrorF(PSTR("Heater "));
+                printName();
+                Com::printFLN(PSTR(" failed to rise under full power. Heater disabled."));
+                Com::printErrorFLN(PSTR("If this wasn't due to a hardware defect, the decoupling period might be set too low."));
+                Com::printErrorF(PSTR("No temperature rise after (ms):"));
                 Com::print(decouplePeriod);
                 Com::println();
                 setError(HeaterError::NO_HEATUP);
@@ -151,7 +244,9 @@ void HeatManager::update() {
         } else if (decoupleMode == DecoupleMode::HOLDING) {
             if (fabs(tempError) > decoupleVariance) {
                 // Temperature left target range
-                Com::printErrorFLN(PSTR("The temperature for a heater left the reached target area."));
+                Com::printErrorF(PSTR("The temperature for heater "));
+                printName();
+                Com::printFLN(PSTR(" deviated too far from the target temperature. Heater disabled."));
                 Com::printErrorFLN(PSTR("This can happen on a hardware defect or if the decouple temperature variance is set too low."));
                 Com::printErrorF(PSTR("Deviation:"));
                 Com::printFloat(tempError, 2);
@@ -194,11 +289,18 @@ void HeatManager::update() {
 }
 
 void HeatManager::eepromHandle() {
+#ifndef PREVENT_CHANGE_MAX_TEMPERATURE
     EEPROM::handleFloat(eepromPos + 0, PSTR("Max. Temperature [deg C]"), 2, maxTemperature);
+#endif
+#ifndef PREVENT_CHANGE_MAX_PWM
     EEPROM::handleByte(eepromPos + 4, PSTR("Max. PWM [0-255]"), maxPWM);
+#endif
     EEPROM::handleLong(eepromPos + 5, PSTR("Decouple test period [ms]"), decouplePeriod);
     EEPROM::handleFloat(eepromPos + 9, PSTR("Decouple variance [K]"), 2, decoupleVariance);
-    eepromHandleLocal(eepromPos + 13);
+    EEPROM::handleFloat(eepromPos + 13, PSTR("Hysteresis Temp. [°C, 0=off]"), 2, hysteresisTemperature);
+    EEPROM::handleLong(eepromPos + 17, PSTR("Hysteresis time [ms]"), hysteresisTime);
+    EEPROM::handleLong(eepromPos + 21, PSTR("Max. heatup time [ms,0=off]"), maxWait);
+    eepromHandleLocal(eepromPos + 25);
 }
 
 void HeatManager::disableAllHeaters() {
@@ -213,18 +315,56 @@ void HeatManager::waitForTargetTemperature() {
     }
     bool oldReport = Printer::isAutoreportTemp();
     Printer::setAutoreportTemp(true);
-    while (true) {
+    millis_t startTime = HAL::timeInMilliseconds();
+    millis_t waitUntil = 0;
+    while (!Printer::breakLongCommand) {
         Commands::checkForPeriodicalActions(true);
-        GCode::keepAlive(WaitHeater);
-        if (fabs(targetTemperature - currentTemperature) <= 1 || Printer::breakLongCommand) {
-            Printer::setAutoreportTemp(oldReport);
-            return;
+        GCode::keepAlive(FirmwareState::WaitHeater);
+        millis_t time = HAL::timeInMilliseconds();
+        float absDiff = fabs(targetTemperature - currentTemperature);
+        if (hysteresisTemperature > 0) { // User wants temp. within a corridor
+            if (waitUntil == 0) {
+                if (absDiff <= hysteresisTemperature) {
+                    waitUntil = time + hysteresisTime;
+                }
+            } else {
+                if (absDiff > hysteresisTemperature) {
+                    waitUntil = 0;
+                } else if (waitUntil - time > 2000000000UL) {
+                    break;
+                }
+            }
+        } else { // Just break if we are within one degree of target temperature
+            if (absDiff <= 1.0f) {
+                break;
+            }
+        }
+        if (maxWait && startTime + maxWait - currentTemperature > 2000000000UL) {
+            GCode::fatalError(PSTR("Target temp. not reached within set time limit"));
+            break;
         }
     }
+    Printer::setAutoreportTemp(oldReport);
 }
 
 bool HeatManager::hasConfigMenu() {
-    return false;
+    return true;
+}
+
+void HeatManager::showBaseConfigMenu(GUIAction action) {
+#if FEATURE_CONTROLLER != NO_CONTROLLER
+#ifndef PREVENT_CHANGE_MAX_TEMPERATURE
+    GUI::menuFloatP(action, PSTR("Max. Temp:"), maxTemperature, 0, menuHMSetMaxTemperature, this, GUIPageType::FIXED_CONTENT);
+#endif
+#ifndef PREVENT_CHANGE_MAX_PWM
+    GUI::menuLongP(action, PSTR("Max. PWM:"), maxPWM, menuHMMaxPWM, this, GUIPageType::FIXED_CONTENT);
+#endif
+    GUI::menuFloatP(action, PSTR("Decouple var.:"), decoupleVariance, 0, menuHMDecoupleVariance, this, GUIPageType::FIXED_CONTENT);
+    GUI::menuLongP(action, PSTR("Decouple per.:"), decouplePeriod, menuHMDecouplePeriod, this, GUIPageType::FIXED_CONTENT);
+    GUI::menuFloatP(action, PSTR("Hyster. temp.:"), hysteresisTemperature, 1, menuHMSetHysteresisTemperature, this, GUIPageType::FIXED_CONTENT);
+    GUI::menuLongP(action, PSTR("Hyster. time:"), hysteresisTime, menuHMSetHysteresisTime, this, GUIPageType::FIXED_CONTENT);
+    GUI::menuLongP(action, PSTR("Max. wait:"), maxWait, menuHMMaxWait, this, GUIPageType::FIXED_CONTENT);
+#endif
 }
 
 void HeatManager::reportTemperature(char c, int idx) {
@@ -292,12 +432,35 @@ void HeatManager::showControlMenu(GUIAction action) {
 #if FEATURE_CONTROLLER != NO_CONTROLLER
     if (isOff()) {
         GUI::menuSelectableP(action, PSTR("Set Temp: Off"), menuSetTemperature, this, GUIPageType::FIXED_CONTENT);
+        DEFAULT_MATERIALS
     } else {
         GUI::flashToStringLong(GUI::tmpString, PSTR("Set Temp: @°C"), static_cast<int32_t>(lroundf(targetTemperature)));
         GUI::menuSelectable(action, GUI::tmpString, menuSetTemperature, this, GUIPageType::FIXED_CONTENT);
+        GUI::menuSelectableP(action, PSTR("Disable"), menuDisableTemperature, this, GUIPageType::ACTION);
     }
-    GUI::menuSelectableP(action, PSTR("Disable"), menuDisableTemperature, this, GUIPageType::ACTION);
 #endif
+}
+
+void HeatManager::showTemperature(GUIAction action, FSTRINGPARAM(name), int extTemp, int bedTemp, int chamberTemp) {
+    newTemp = 0;
+    if (heaterType == 'E') {
+        newTemp = extTemp;
+    }
+    if (heaterType == 'B') {
+        newTemp = bedTemp;
+    }
+    if (heaterType == 'C') {
+        newTemp = chamberTemp;
+    }
+    if (newTemp == 0 || newTemp > maxTemperature || newTemp < getMinTemperature()) {
+        return;
+    }
+    GUI::bufClear();
+    GUI::bufAddStringP(name);
+    GUI::bufAddChar(' ');
+    GUI::bufAddInt(newTemp, 3);
+    strcpy(GUI::tmpString, GUI::buf);
+    GUI::menuSelectable(action, GUI::tmpString, menuSetTemperatureFixed, this, GUIPageType::ACTION);
 }
 
 void HeatManager::printName() {
@@ -332,9 +495,10 @@ void HeatManagerPID::updateDerived() {
     kd = D / timeSeconds;
 }
 
-void HeatManagerPID::resetFromConfig(fast8_t _maxPwm, float decVariance, millis_t decPeriod,
+void HeatManagerPID::resetFromConfig(ufast8_t _maxPwm, float maxTemp, float decVariance, millis_t decPeriod,
                                      float p, float i, float d, float _driveMin, float _driveMax) {
     maxPWM = _maxPwm;
+    maxTemperature = maxTemp;
     decoupleVariance = decVariance;
     decouplePeriod = decPeriod;
     P = p;
@@ -390,7 +554,7 @@ void menuSetPIDP(GUIAction action, void* data) {
 void menuSetPIDI(GUIAction action, void* data) {
 #if FEATURE_CONTROLLER != NO_CONTROLLER
     HeatManagerPID* hm = reinterpret_cast<HeatManagerPID*>(data);
-    float value = hm->getP();
+    float value = hm->getI();
     DRAW_FLOAT_P(PSTR("Integral I:"), Com::tEmpty, value, 2);
     if (GUI::handleFloatValueAction(action, value, 0, 500, 0.02)) {
         hm->setPID(hm->getP(), value, hm->getD());
@@ -433,12 +597,13 @@ void menuSetDriveMax(GUIAction action, void* data) {
 
 void HeatManagerPID::showConfigMenu(GUIAction action) {
 #if FEATURE_CONTROLLER != NO_CONTROLLER
-    GUI::menuLongP(action, PSTR("Max. PWM:"), maxPWM, menuHMMaxPWM, this, GUIPageType::FIXED_CONTENT);
+    // GUI::menuLongP(action, PSTR("Max. PWM:"), maxPWM, menuHMMaxPWM, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("P:"), P, 1, menuSetPIDP, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("I:"), I, 2, menuSetPIDI, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("D:"), D, 1, menuSetPIDD, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("Min. I-Part:"), driveMin, 1, menuSetDriveMin, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("Max. I-Part:"), driveMax, 1, menuSetDriveMax, this, GUIPageType::FIXED_CONTENT);
+    showBaseConfigMenu(action);
 #endif
 }
 
@@ -477,11 +642,12 @@ void HeatManagerPID::autocalibrate(GCode* g) {
         HAL::pingWatchdog();
 #endif
         Commands::checkForPeriodicalActions(true); // update heaters etc.
-        GCode::keepAlive(WaitHeater);
+        GCode::keepAlive(FirmwareState::WaitHeater);
         setCurrentTemperature(input->get());
         millis_t time = HAL::timeInMilliseconds();
         maxTemp = RMath::max(maxTemp, currentTemperature);
         minTemp = RMath::min(minTemp, currentTemperature);
+        targetTemperature = heating ? temp : 0.0f;
         if (heating == true && currentTemperature > temp) { // switch heating -> off
             if (time - t2 > 5000) {
                 heating = false;
@@ -660,7 +826,7 @@ void HeatManagerPeltierPID<flowPin, peltierType, minTemp>::autocalibrate(GCode* 
         HAL::pingWatchdog();
 #endif
         Commands::checkForPeriodicalActions(true); // update heaters etc.
-        GCode::keepAlive(WaitHeater);
+        GCode::keepAlive(FirmwareState::WaitHeater);
         setCurrentTemperature(input->get());
         millis_t time = HAL::timeInMilliseconds();
         maxTemp = RMath::max(maxTemp, currentTemperature);
@@ -861,6 +1027,7 @@ void HeatManagerDynDeadTime::setTargetTemperature(float temp) {
 
 void HeatManagerDynDeadTime::updateTimings() {
     float scale;
+    // file deepcode ignore FloatingPointEquals: <please specify a reason of ignoring this>
     if (temp1 == temp2) {
         deadUp = deadUp1;
         deadDown = deadDown1;
@@ -879,9 +1046,10 @@ void HeatManagerDynDeadTime::updateTimings() {
     // Com::printFLN(PSTR("DeadDown"), deadDown, 2);
 }
 
-void HeatManagerDynDeadTime::resetFromConfig(fast8_t _maxPwm, float decVariance, millis_t decPeriod,
+void HeatManagerDynDeadTime::resetFromConfig(ufast8_t _maxPwm, float maxTemp, float decVariance, millis_t decPeriod,
                                              float _temp1, float _deadUp1, float _deadDown1, float _temp2, float _deadUp2, float _deadDown2) {
     maxPWM = _maxPwm;
+    maxTemperature = maxTemp;
     decoupleVariance = decVariance;
     decouplePeriod = decPeriod;
     temp1 = _temp1;
@@ -907,12 +1075,12 @@ int HeatManagerDynDeadTime::eepromSizeLocal() {
     return 6 * 4;
 }
 
-void HeatManagerDynDeadTime::showControlMenu(GUIAction action) {
+/* void HeatManagerDynDeadTime::showControlMenu(GUIAction action) {
 #if FEATURE_CONTROLLER != NO_CONTROLLER
     GUI::flashToStringLong(GUI::tmpString, PSTR("Set Temp: @°C"), static_cast<int32_t>(lroundf(targetTemperature)));
     GUI::menuSelectable(action, GUI::tmpString, menuSetTemperature, this, GUIPageType::FIXED_CONTENT);
 #endif
-}
+} */
 
 void menuSetDDPTime1(GUIAction action, void* data) {
 #if FEATURE_CONTROLLER != NO_CONTROLLER
@@ -977,13 +1145,14 @@ void menuSetDDPDown2(GUIAction action, void* data) {
 
 void HeatManagerDynDeadTime::showConfigMenu(GUIAction action) {
 #if FEATURE_CONTROLLER != NO_CONTROLLER
-    GUI::menuLongP(action, PSTR("Max. PWM:"), maxPWM, menuHMMaxPWM, this, GUIPageType::FIXED_CONTENT);
+    // GUI::menuLongP(action, PSTR("Max. PWM:"), maxPWM, menuHMMaxPWM, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("Temp 1:"), temp1, 0, menuSetDDPTime1, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("Up Time 1:"), deadUp1, 1, menuSetDDPUp1, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("Down Time 1:"), deadDown1, 1, menuSetDDPDown1, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("Temp 2:"), temp2, 0, menuSetDDPTime2, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("Up Time 2:"), deadUp2, 1, menuSetDDPUp2, this, GUIPageType::FIXED_CONTENT);
     GUI::menuFloatP(action, PSTR("Down Time 2:"), deadDown2, 1, menuSetDDPDown2, this, GUIPageType::FIXED_CONTENT);
+    showBaseConfigMenu(action);
 #endif
 }
 
@@ -1002,6 +1171,7 @@ bool HeatManagerDynDeadTime::detectTimings(float temp, float& up, float& down, f
         last[i] = currentTemperature;
         avg[i & 3] = currentTemperature;
     }
+    targetTemperature = currentTemperature > temp - 10.0f ? temp - 10.0f : temp;
     millis_t timeReference = lastTime;
     millis_t timeSecond = HAL::timeInMilliseconds();
     while (mode != 5) {
@@ -1012,7 +1182,7 @@ bool HeatManagerDynDeadTime::detectTimings(float temp, float& up, float& down, f
         HAL::pingWatchdog();
 #endif
         Commands::checkForPeriodicalActions(true); // update heaters etc.
-        GCode::keepAlive(WaitHeater);
+        GCode::keepAlive(FirmwareState::WaitHeater);
         millis_t time = HAL::timeInMilliseconds();
         if (time - lastTime >= 25) { // store new
             setCurrentTemperature(input->get());
@@ -1040,6 +1210,7 @@ bool HeatManagerDynDeadTime::detectTimings(float temp, float& up, float& down, f
         case 0: // Wait for minimum 10°C below temp to start testing
             if (currentTemperature < temp - 10) {
                 mode = 1;
+                targetTemperature = temp;
                 output->set(maxPWM);
             }
             break;
@@ -1048,6 +1219,7 @@ bool HeatManagerDynDeadTime::detectTimings(float temp, float& up, float& down, f
                 mode = 2;
                 referenceRaise = raise * reduce;
                 timeReference = time;
+                targetTemperature = 0.0f;
                 output->set(0);
                 goodCount = 0;
             }
@@ -1069,6 +1241,7 @@ bool HeatManagerDynDeadTime::detectTimings(float temp, float& up, float& down, f
                 mode = 4;
                 referenceRaise = raise * reduce;
                 timeReference = time;
+                targetTemperature = temp;
                 output->set(maxPWM);
                 goodCount = 0;
             }
@@ -1087,6 +1260,7 @@ bool HeatManagerDynDeadTime::detectTimings(float temp, float& up, float& down, f
             break;
         }
     }
+    targetTemperature = 0.0f;
     output->set(0);
     return true;
 }
@@ -1114,5 +1288,5 @@ void HeatManagerDynDeadTime::autocalibrate(GCode* g) {
 }
 
 #undef IO_TARGET
-#define IO_TARGET IO_TARGET_TOOLS_TEMPLATES
+#define IO_TARGET IO_TARGET_TEMPLATES
 #include "../io/redefine.h"

@@ -18,19 +18,36 @@
 #ifndef _GCODE_H
 #define _GCODE_H
 
+#include "communication/Communication.h"
+
 #define MAX_CMD_SIZE 96
 #define ARRAY_SIZE(_x) (sizeof(_x) / sizeof(_x[0]))
+#ifndef GCODE_BUFFER_SIZE
+#define GCODE_BUFFER_SIZE 1
+#endif
 
-enum FirmwareState { NotBusy = 0,
-                     Processing,
-                     Paused,
-                     WaitHeater,
-                     DoorOpen };
+#define FATAL_FLAG_POWER 1
+#define FATAL_FLAG_MOTORS 2
+#define FATAL_FLAG_HEATER 4
+#define FATAL_FLAG_SLOW_STOP 8
+
+enum class FirmwareState { NotBusy = 0,
+                           Processing,
+                           Paused,
+                           WaitHeater,
+                           DoorOpen };
 
 class SDCard;
 class Commands;
 class GCode;
+
+#ifndef SERIAL_IN_BUFFER
+#ifdef SERIAL_BUFFER_SIZE
+#define SERIAL_IN_BUFFER SERIAL_BUFFER_SIZE
+#else
 #define SERIAL_IN_BUFFER 128
+#endif
+#endif
 
 class SerialGCodeSource : public GCodeSource {
     Stream* stream;
@@ -41,7 +58,7 @@ class SerialGCodeSource : public GCodeSource {
     uint8_t sendAsBinary;                   ///< Flags the command as binary input.
     uint8_t commentDetected;                ///< Flags true if we are reading the comment part of a command.
     uint8_t binaryCommandSize;              ///< Expected size of the incoming binary command.
-    ufast8_t bufWritePos, bufReadPos, bufLength;
+    ufast8_t bufWritePos, bufReadPos, bufLength, bufLengthRead;
 #endif
 public:
     SerialGCodeSource(Stream* p);
@@ -53,8 +70,9 @@ public:
     virtual void writeByte(uint8_t byte);
     virtual void close();
     virtual void prefetchContent();
-    void testEmergency(GCode& gcode);
+    bool testEmergency(GCode& gcode); // Returns true when gcode was handled
 };
+
 //#pragma message "Sd support: " XSTR(SDSUPPORT)
 #if SDSUPPORT
 class SDCardGCodeSource : public GCodeSource {
@@ -185,7 +203,7 @@ public:
         return ((params & 32) != 0);
     }
     inline void setZ(float val) {
-        X = val;
+        Z = val;
         params |= 32;
     }
     inline void unsetZ() {
@@ -369,11 +387,22 @@ public:
         return ((params2 & 32768) != 0);
     }
     inline void reset() { params = params2 = 0; }
+    inline bool isPriorityM() {
+#if HOST_PRIORITY_CONTROLS
+        return (M >= 10000 && M < 19999);
+#else
+        return false;
+#endif
+    }
+    inline uint16_t getPriorityM() {
+        return (isPriorityM() ? (M - 10000) : M);
+    }
     void printCommand();
     bool parseBinary(uint8_t* buffer, fast8_t length, bool fromSerial);
     bool parseAscii(char* line, bool fromSerial);
     void popCurrentCommand();
     void echoCommand();
+    void ackOutOfOrder();
     /** Get next command in command buffer. After the command is processed, call gcode_command_finished() */
     static GCode* peekCurrentCommand();
     /** Frees the cache used by the last command fetched. */
@@ -381,11 +410,11 @@ public:
     static void pushCommand();
     static void executeFString(FSTRINGPARAM(cmd));
     static uint8_t computeBinarySize(char* ptr);
-    static void fatalError(FSTRINGPARAM(message));
+    static void fatalError(FSTRINGPARAM(message), uint8_t flags = 255);
     static void reportFatalError();
     static void resetFatalError();
     inline static bool hasFatalError() {
-        return fatalErrorMsg != NULL;
+        return fatalErrorMsg != nullptr;
     }
     static void keepAlive(enum FirmwareState state, int id = 0);
     static uint32_t keepAliveInterval;
@@ -433,13 +462,13 @@ public:
     GCodeSource* source;
 };
 
-#if JSON_OUTPUT
-#include "../SdFat/SdFat.h"
+#if JSON_OUTPUT && SDSUPPORT
+#include "SdFat/src/SdFat.h"
 // Struct to hold Gcode file information 32 bytes
 #define GENBY_SIZE 16
 class GCodeFileInfo {
 public:
-    void init(SdFile& file);
+    void init(SdBaseFile& file);
 
     unsigned long fileSize;
     float objectHeight;

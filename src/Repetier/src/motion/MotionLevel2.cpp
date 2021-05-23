@@ -47,7 +47,7 @@ void Motion2::init() {
 }
 // Timer gets called at PREPARE_FREQUENCY so it has enough time to
 // prefill data structures required by stepper interrupt. Each segment planned
-// is for a 2000 / PREPARE_FREQUENCY long period of constant speed. We try to
+// is for a 1 / BLOCK_FREQUENCY long period of constant speed. We try to
 // precompute up to 16 such tiny buffers and with the double frequency We
 // should be on the safe side of never getting an underflow.
 __attribute__((optimize("unroll-loops"))) void Motion2::timer() {
@@ -110,6 +110,7 @@ __attribute__((optimize("unroll-loops"))) void Motion2::timer() {
             nextActId = 0;
         }
         act->motion1 = actM1;
+        Motion1::intLengthBuffered -= actM1->intLength;
         act->state = Motion2State::NOT_INITIALIZED;
         if (actM1->action == Motion1Action::MOVE && actM1->isCheckEndstops()) {
             // Compute number of steps required
@@ -193,7 +194,7 @@ __attribute__((optimize("unroll-loops"))) void Motion2::timer() {
                 m3->last = 1;
             }
         }
-        // Com::printFLN("sf:", sFactor, 4);
+        // Com::printFLN(PSTR("sf:"), sFactor, 4);
         // Convert float position to integer motor position
         // This step catches all nonlinear behaviour from
         // acceleration profile and printer geometry
@@ -230,7 +231,7 @@ __attribute__((optimize("unroll-loops"))) void Motion2::timer() {
         m3->usedAxes = 0;
         if ((m3->stepsRemaining = velocityProfile->stepsPerSegment) == 0) {
             if (m3->last) { // extreme case, normally never happens
-                m3->usedAxes = 0;
+                // m3->usedAxes = 0;
                 m3->stepsRemaining = 1;
                 // Need to add this move to handle finished state correctly
                 Motion3::pushReserved();
@@ -282,11 +283,11 @@ __attribute__((optimize("unroll-loops"))) void Motion2::timer() {
                 // handle advance of E
                 int advTarget = velocityProfile->f * actM1->eAdv;
                 int advDiff = advTarget - advanceSteps;
-                /* Com::printF("adv:", advTarget);
-                Com::printF(" d:", *delta);
-                Com::printF(" as:", advanceSteps);
-                Com::printF(" f:", velocityProfile->f, 2);
-                Com::printFLN(" ea:", actM1->eAdv, 4); */
+                /* Com::printF(PSTR("adv:"), advTarget);
+                Com::printF(PSTR(" d:"), *delta);
+                Com::printF(PSTR(" as:"), advanceSteps);
+                Com::printF(PSTR(" f:"), velocityProfile->f, 2);
+                Com::printFLN(PSTR(" ea:"), actM1->eAdv, 4); */
 
                 *delta += advDiff;
                 if (*delta > 0) { // extruding
@@ -316,17 +317,19 @@ __attribute__((optimize("unroll-loops"))) void Motion2::timer() {
                 }
             }
             if (*delta > m3->errorUpdate) { // test if more steps wanted then possible, should never happen!
-                // adjust *np by the number of steps we can not execute so physical step position does not get corrupted.
-                // That way next segment can correct remaining steps.
+                                            // adjust *np by the number of steps we can not execute so physical step position does not get corrupted.
+                                            // That way next segment can correct remaining steps.
+#ifdef DEBUG_MOTION_ERRORS
+                Com::printF(PSTR("StepError"), (int)i);
+                Com::printF(PSTR(" d:"), *delta);
+                Com::printFLN(PSTR(" eu:"), m3->errorUpdate);
+#endif
                 if (m3->directions & *bits) { // positive move, reduce *np
                     *np -= (*delta - m3->errorUpdate) >> 1;
                 } else {
                     *np += (*delta - m3->errorUpdate) >> 1;
                 }
                 *delta = m3->errorUpdate;
-#ifdef DEBUG_MOTION_ERRORS
-                Com::printFLN(PSTR("StepError"), (int)i);
-#endif
             }
             m3->error[i] = -m3->stepsRemaining;
             delta++;
@@ -335,6 +338,19 @@ __attribute__((optimize("unroll-loops"))) void Motion2::timer() {
             bits++;
             babysteps++;
         } // FOR_ALL_AXES
+        /* Com::printF(PSTR("sf:"), sFactor, 4);
+        Com::printF(PSTR(" s:"), (int)act->state);
+        Com::printF(PSTR(" da:"), m3->delta[A_AXIS]);
+        Com::printF(PSTR(" pa:"), pos[A_AXIS], 3);
+        // Com::printF(PSTR(" lpx:"), lastMotorPos[lastMotorIdx][0]);
+        Com::printF(PSTR(" lpa:"), lastMotorPos[lastMotorIdx][4]);
+        // Com::printF(PSTR(" lpy:"), lp[1]);
+        // Com::printF(PSTR(" lpz:"), lp[2]);
+        // Com::printF(PSTR(" npx:"), lastMotorPos[nextMotorIdx][0]);
+        Com::printFLN(PSTR(" npa:"), lastMotorPos[nextMotorIdx][4]);
+        // Com::printF(PSTR(" npy:"), np[1]);
+        // Com::printFLN(PSTR(" npz:"), np[2]);
+        */
         lastMotorIdx = nextMotorIdx;
         m3->parentId = act->id;
         m3->checkEndstops = actM1->isCheckEndstops();
@@ -419,12 +435,16 @@ __attribute__((optimize("unroll-loops"))) void Motion2::timer() {
             np[i] = lroundf(actM1->start[i] + sFactor * actM1->unitDir[i]);
         }
         /* Com::printF(PSTR("sf:"), sFactor, 4);
+        Com::printF(PSTR(" s:"), (int)act->state);
         Com::printF(PSTR(" lpx:"), lp[0]);
-        Com::printF(PSTR(" lpy:"), lp[1]);
-        Com::printF(PSTR(" lpz:"), lp[2]);
+        Com::printF(PSTR(" lpa:"), lp[4]);
+        // Com::printF(PSTR(" lpy:"), lp[1]);
+        // Com::printF(PSTR(" lpz:"), lp[2]);
         Com::printF(PSTR(" npx:"), np[0]);
-        Com::printF(PSTR(" npy:"), np[1]);
-        Com::printFLN(PSTR(" npz:"), np[2]); */
+        Com::printFLN(PSTR(" npa:"), np[4]);
+        // Com::printF(PSTR(" npy:"), np[1]);
+        // Com::printFLN(PSTR(" npz:"), np[2]);
+        */
         // Fill structures used to update bresenham
         m3->directions = 0;
         m3->usedAxes = 0;

@@ -42,6 +42,33 @@ void Motion3::init() {
     }
 }
 
+void Motion3::setDirectionsForNewMotors() {
+#ifdef XMOTOR_SWITCHABLE
+    Motion1::motors[X_AXIS]->dir(lastDirection & 1);
+#else
+    XMotor.dir(lastDirection & 1);
+#endif
+    YMotor.dir(lastDirection & 2);
+    ZMotor.dir(lastDirection & 4);
+#if NUM_AXES > A_AXIS
+    AMotor.dir(lastDirection & 16);
+#endif
+#if NUM_AXES > B_AXIS
+    BMotor.dir(lastDirection & 32);
+#endif
+#if NUM_AXES > C_AXIS
+    CMotor.dir(lastDirection & 64);
+#endif
+    if (Motion1::dittoMode) {
+        for (fast8_t i = 0; i <= Motion1::dittoMode; i++) {
+            Tool::tools[i]->directionMotor(lastDirection & 8);
+        }
+    } else {
+        if (Motion1::motors[E_AXIS]) {
+            Motion1::motors[E_AXIS]->dir(lastDirection & 8);
+        }
+    }
+}
 /* Motion3Buffer* Motion3::tryReserve() {
     if (length < NUM_MOTION3_BUFFER) {
         return &buffers[last];
@@ -55,7 +82,7 @@ void Motion3::init() {
 */
 bool Motion3::activateNext() {
     act = &buffers[nextActId++];
-    bool newDir = lastDirection != act->directions;
+    bool newDir = (lastDirection != act->directions) && act->usedAxes;
     // on new line reset triggered axes
     if (act->parentId != lastParentId) {
         actM2 = &Motion2::buffers[act->parentId];
@@ -63,9 +90,9 @@ bool Motion3::activateNext() {
         Motion1::axesTriggered = 0;
         Motion1::motorTriggered = 0;
         Motion3::skipParentId = 255;
-        newDir = true; // might have changed or motors might have changed
     }
     if (newDir) {
+        lastDirection = act->directions;
         // Set direction first to give driver some time
 #ifdef XMOTOR_SWITCHABLE
         Motion1::motors[X_AXIS]->dir(act->directions & 1);
@@ -131,95 +158,188 @@ void Motion3::timer() {
     }
     // Run bresenham algorithm for stepping forward
 
-    if (act->checkEndstops) {
-        // Endstop handling - skip all following segments
-        if (act->parentId == skipParentId) {
-            if (act->last) {
-                Motion2::pop();
+    if (act->usedAxes) {
+        if (act->checkEndstops) {
+            // Endstop handling - skip all following segments
+            if (act->parentId == skipParentId) {
+                if (act->last) {
+                    Motion2::pop();
+                }
+                if (--length == 0) {
+                    act = nullptr;
+                } else {
+                    activateNext();
+                }
+                return;
             }
-            if (--length == 0) {
-                act = nullptr;
-            } else {
-                activateNext();
-            }
-            return;
-        }
 
-        // Test one motor endstop to simplify stepper logic
+            // Test one motor endstop to simplify stepper logic
 #if !defined(NO_SOFTWARE_AXIS_ENDSTOPS) || !defined(NO_MOTOR_ENDSTOPS)
-        ufast8_t axisBit = axisBits[testMotorId];
+            ufast8_t axisBit = axisBits[testMotorId];
 #endif
 
 #if !defined(NO_SOFTWARE_AXIS_ENDSTOPS)
-        if (actM1->axisUsed & axisBit) {
-            if (actM1->axisDir & axisBit) {
-                if (Motion1::maxAxisEndstops[testMotorId] && Motion1::maxAxisEndstops[testMotorId]->update()) {
-                    Motion2::endstopTriggered(act, testMotorId, true);
-                    return;
-                }
-            } else {
-                if (Motion1::minAxisEndstops[testMotorId] && Motion1::minAxisEndstops[testMotorId]->update()) {
-                    Motion2::endstopTriggered(act, testMotorId, false);
-                    return;
+            if (actM1->axisUsed & axisBit) {
+                if (actM1->axisDir & axisBit) {
+                    if (Motion1::maxAxisEndstops[testMotorId] && Motion1::maxAxisEndstops[testMotorId]->update()) {
+                        Motion2::endstopTriggered(act, testMotorId, true);
+                        return;
+                    }
+                } else {
+                    if (Motion1::minAxisEndstops[testMotorId] && Motion1::minAxisEndstops[testMotorId]->update()) {
+                        Motion2::endstopTriggered(act, testMotorId, false);
+                        return;
+                    }
                 }
             }
-        }
-        if (Motion1::endstopMode == PROBING) {
-            if (ZProbe->update()) { // ignore z endstop here
-                Motion2::endstopTriggered(act, Z_AXIS, false);
+            if (Motion1::endstopMode == EndstopMode::PROBING) {
+                if (ZProbe->update()) { // ignore z endstop here
+                    Motion2::endstopTriggered(act, Z_AXIS, false);
+                }
             }
-        }
 #endif
 
 #if !defined(NO_MOTOR_ENDSTOPS)
-        StepperDriverBase* m = Motion1::motors[testMotorId];
-        if (m != nullptr && (act->usedAxes & axisBit) != 0) {
-            if (testMotorId == E_AXIS && Motion1::dittoMode) {
-                for (fast8_t i = 0; i <= Motion1::dittoMode; i++) {
-                    Tool* t = Tool::getTool(i);
-                    if (t != nullptr && Tool::getTool(i)->updateMotor()) {
-                        Motion2::motorEndstopTriggered(E_AXIS, act->directions & axisBit);
+            StepperDriverBase* m = Motion1::motors[testMotorId];
+            if (m != nullptr && (act->usedAxes & axisBit) != 0) {
+                if (testMotorId == E_AXIS && Motion1::dittoMode) {
+                    for (fast8_t i = 0; i <= Motion1::dittoMode; i++) {
+                        Tool* t = Tool::getTool(i);
+                        if (t != nullptr && Tool::getTool(i)->updateMotor()) {
+                            Motion2::motorEndstopTriggered(E_AXIS, act->directions & axisBit);
+                        }
                     }
+                } else if ((Motion1::motorTriggered & axisBit /* m->getAxisBit() */) == 0 && m->updateEndstop()) {
+                    Motion2::motorEndstopTriggered(testMotorId /* m->getAxis() */, act->directions & axisBit);
                 }
-            } else if ((Motion1::motorTriggered & axisBit /* m->getAxisBit() */) == 0 && m->updateEndstop()) {
-                Motion2::motorEndstopTriggered(testMotorId /* m->getAxis() */, act->directions & axisBit);
             }
-        }
 #endif
 
 #if !defined(NO_SOFTWARE_AXIS_ENDSTOPS) || !defined(NO_MOTOR_ENDSTOPS)
-        testMotorId++;
-        if (testMotorId >= NUM_AXES) {
-            testMotorId = X_AXIS;
-        }
+            testMotorId++;
+            if (testMotorId >= NUM_AXES) {
+                testMotorId = X_AXIS;
+            }
 #endif
-        if (/* (act->usedAxes & 1) && */ (Motion1::motorTriggered & 1) == 0) {
+            if ((Motion1::motorTriggered & 1) == 0) {
+                if ((act->error[X_AXIS] += act->delta[X_AXIS]) > 0) {
+#if defined(NO_MOTOR_ENDSTOPS)
+#ifdef XMOTOR_SWITCHABLE
+                    Motion1::motors[X_AXIS]->step();
+#else
+                    XMotor.step();
+#endif
+#else
+#ifdef XMOTOR_SWITCHABLE
+                    Motion1::motors[X_AXIS]->stepMotorEndStop();
+#else
+                    XMotor.stepMotorEndStop();
+#endif
+#endif
+                    actM2->stepsRemaining[X_AXIS]--;
+                    act->error[X_AXIS] -= act->errorUpdate;
+                }
+            }
+            if ((Motion1::motorTriggered & 2) == 0) {
+                if ((act->error[Y_AXIS] += act->delta[Y_AXIS]) > 0) {
+#if defined(NO_MOTOR_ENDSTOPS)
+                    YMotor.step();
+#else
+                    YMotor.stepMotorEndStop();
+#endif
+                    actM2->stepsRemaining[Y_AXIS]--;
+                    act->error[Y_AXIS] -= act->errorUpdate;
+                }
+            }
+            if ((Motion1::motorTriggered & 4) == 0) {
+                if ((act->error[Z_AXIS] += act->delta[Z_AXIS]) > 0) {
+#if defined(NO_MOTOR_ENDSTOPS)
+                    ZMotor.step();
+#else
+                    ZMotor.stepMotorEndStop();
+#endif
+                    actM2->stepsRemaining[Z_AXIS]--;
+                    act->error[Z_AXIS] -= act->errorUpdate;
+                }
+            }
+#if NUM_AXES > E_AXIS
+            if ((Motion1::motorTriggered & 8) == 0) {
+                if ((act->error[E_AXIS] += act->delta[E_AXIS]) > 0) {
+                    if (Motion1::dittoMode) {
+                        for (fast8_t i = 0; i <= Motion1::dittoMode; i++) {
+                            Tool::getTool(i)->stepMotor();
+                        }
+                    } else {
+                        if (Motion1::motors[E_AXIS]) {
+#if defined(NO_MOTOR_ENDSTOPS)
+                            Motion1::motors[E_AXIS]->step();
+#else
+                            Motion1::motors[E_AXIS]->stepMotorEndStop();
+#endif
+                        }
+                    }
+                    actM2->stepsRemaining[E_AXIS]--;
+                    act->error[E_AXIS] -= act->errorUpdate;
+                }
+            }
+#endif
+#if NUM_AXES > A_AXIS
+            if ((Motion1::motorTriggered & 16) == 0) {
+                if ((act->error[A_AXIS] += act->delta[A_AXIS]) > 0) {
+#if defined(NO_MOTOR_ENDSTOPS)
+                    Motion1::motors[A_AXIS]->step();
+#else
+                    Motion1::motors[A_AXIS]->stepMotorEndStop();
+#endif
+                    actM2->stepsRemaining[A_AXIS]--;
+                    act->error[A_AXIS] -= act->errorUpdate;
+                }
+            }
+#endif
+#if NUM_AXES > B_AXIS
+            if ((Motion1::motorTriggered & 32) == 0) {
+                if ((act->error[B_AXIS] += act->delta[B_AXIS]) > 0) {
+#if defined(NO_MOTOR_ENDSTOPS)
+                    Motion1::motors[B_AXIS]->step();
+#else
+                    Motion1::motors[B_AXIS]->stepMotorEndStop();
+#endif
+                    actM2->stepsRemaining[B_AXIS]--;
+                    act->error[B_AXIS] -= act->errorUpdate;
+                }
+            }
+#endif
+#if NUM_AXES > C_AXIS
+            if ((Motion1::motorTriggered & 64) == 0) {
+                if ((act->error[C_AXIS] += act->delta[C_AXIS]) > 0) {
+#if defined(NO_MOTOR_ENDSTOPS)
+                    Motion1::motors[C_AXIS]->step();
+#else
+                    Motion1::motors[C_AXIS]->stepMotorEndStop();
+#endif
+                    actM2->stepsRemaining[C_AXIS]--;
+                    act->error[C_AXIS] -= act->errorUpdate;
+                }
+            }
+#endif
+        } else { // untested steps
             if ((act->error[X_AXIS] += act->delta[X_AXIS]) > 0) {
 #ifdef XMOTOR_SWITCHABLE
                 Motion1::motors[X_AXIS]->step();
 #else
                 XMotor.step();
 #endif
-                actM2->stepsRemaining[X_AXIS]--;
                 act->error[X_AXIS] -= act->errorUpdate;
             }
-        }
-        if (/* (act->usedAxes & 2) && */ (Motion1::motorTriggered & 2) == 0) {
             if ((act->error[Y_AXIS] += act->delta[Y_AXIS]) > 0) {
                 YMotor.step();
-                actM2->stepsRemaining[Y_AXIS]--;
                 act->error[Y_AXIS] -= act->errorUpdate;
             }
-        }
-        if (/* (act->usedAxes & 4) && */ (Motion1::motorTriggered & 4) == 0) {
             if ((act->error[Z_AXIS] += act->delta[Z_AXIS]) > 0) {
                 ZMotor.step();
-                actM2->stepsRemaining[Z_AXIS]--;
                 act->error[Z_AXIS] -= act->errorUpdate;
             }
-        }
 #if NUM_AXES > E_AXIS
-        if (/* (act->usedAxes & 8) && */ (Motion1::motorTriggered & 8) == 0) {
             if ((act->error[E_AXIS] += act->delta[E_AXIS]) > 0) {
                 if (Motion1::dittoMode) {
                     for (fast8_t i = 0; i <= Motion1::dittoMode; i++) {
@@ -230,101 +350,28 @@ void Motion3::timer() {
                         Motion1::motors[E_AXIS]->step();
                     }
                 }
-                actM2->stepsRemaining[E_AXIS]--;
                 act->error[E_AXIS] -= act->errorUpdate;
             }
-        }
 #endif
 #if NUM_AXES > A_AXIS
-        if (/* (act->usedAxes & 16) && */ (Motion1::motorTriggered & 16) == 0) {
             if ((act->error[A_AXIS] += act->delta[A_AXIS]) > 0) {
                 Motion1::motors[A_AXIS]->step();
-                actM2->stepsRemaining[A_AXIS]--;
                 act->error[A_AXIS] -= act->errorUpdate;
             }
-        }
 #endif
 #if NUM_AXES > B_AXIS
-        if (/* (act->usedAxes & 32) && */ (Motion1::motorTriggered & 32) == 0) {
             if ((act->error[B_AXIS] += act->delta[B_AXIS]) > 0) {
                 Motion1::motors[B_AXIS]->step();
-                actM2->stepsRemaining[B_AXIS]--;
                 act->error[B_AXIS] -= act->errorUpdate;
             }
-        }
 #endif
 #if NUM_AXES > C_AXIS
-        if (/* (act->usedAxes & 64) && */ (Motion1::motorTriggered & 64) == 0) {
             if ((act->error[C_AXIS] += act->delta[C_AXIS]) > 0) {
                 Motion1::motors[C_AXIS]->step();
-                actM2->stepsRemaining[C_AXIS]--;
                 act->error[C_AXIS] -= act->errorUpdate;
             }
-        }
 #endif
-    } else { // untested steps
-        // if (act->usedAxes & 1) {
-        if ((act->error[X_AXIS] += act->delta[X_AXIS]) > 0) {
-#ifdef XMOTOR_SWITCHABLE
-            Motion1::motors[X_AXIS]->step();
-#else
-            XMotor.step();
-#endif
-            act->error[X_AXIS] -= act->errorUpdate;
         }
-        // }
-        // if (act->usedAxes & 2) {
-        if ((act->error[Y_AXIS] += act->delta[Y_AXIS]) > 0) {
-            YMotor.step();
-            act->error[Y_AXIS] -= act->errorUpdate;
-        }
-        // }
-        // if (act->usedAxes & 4) {
-        if ((act->error[Z_AXIS] += act->delta[Z_AXIS]) > 0) {
-            ZMotor.step();
-            act->error[Z_AXIS] -= act->errorUpdate;
-        }
-        //}
-#if NUM_AXES > E_AXIS
-        //if (act->usedAxes & 8) {
-        if ((act->error[E_AXIS] += act->delta[E_AXIS]) > 0) {
-            if (Motion1::dittoMode) {
-                for (fast8_t i = 0; i <= Motion1::dittoMode; i++) {
-                    Tool::getTool(i)->stepMotor();
-                }
-            } else {
-                if (Motion1::motors[E_AXIS]) {
-                    Motion1::motors[E_AXIS]->step();
-                }
-            }
-            act->error[E_AXIS] -= act->errorUpdate;
-        }
-        //}
-#endif
-#if NUM_AXES > A_AXIS
-        //if (act->usedAxes & 16) {
-        if ((act->error[A_AXIS] += act->delta[A_AXIS]) > 0) {
-            Motion1::motors[A_AXIS]->step();
-            act->error[A_AXIS] -= act->errorUpdate;
-        }
-        //}
-#endif
-#if NUM_AXES > B_AXIS
-        //if (act->usedAxes & 32) {
-        if ((act->error[B_AXIS] += act->delta[B_AXIS]) > 0) {
-            Motion1::motors[B_AXIS]->step();
-            act->error[B_AXIS] -= act->errorUpdate;
-        }
-        //}
-#endif
-#if NUM_AXES > C_AXIS
-        //if (act->usedAxes & 64) {
-        if ((act->error[C_AXIS] += act->delta[C_AXIS]) > 0) {
-            Motion1::motors[C_AXIS]->step();
-            act->error[C_AXIS] -= act->errorUpdate;
-        }
-        //}
-#endif
     }
     // Test if we are finished
     if (--act->stepsRemaining == 0) {
